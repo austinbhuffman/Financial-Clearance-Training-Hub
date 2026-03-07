@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Financial Clearance Training Hub</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-shape shape-one"></div>
+    <div class="background-shape shape-two"></div>
+    <header class="app-header">
+      <div>
+        <h1>Financial Clearance Training Hub</h1>
+        <p>Process training, competency validation, and certification tracking.</p>
+      </div>
+      <button id="logoutBtn" class="hidden secondary">Log Out</button>
+    </header>
+
+    <main class="container">
+      <section id="authPanel" class="panel">
+        <h2>Sign In</h2>
+        <p>Select a profile or create one to begin training.</p>
+        <div class="auth-grid">
+          <div class="field">
+            <label for="userSelect">Existing user</label>
+            <select id="userSelect"></select>
+          </div>
+          <button id="loginBtn">Sign In</button>
+        </div>
+        <hr />
+        <h3>Create New Profile</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="newName">Full name</label>
+            <input id="newName" type="text" placeholder="Jordan Smith" />
+          </div>
+          <div class="field">
+            <label for="newTeam">Team</label>
+            <input id="newTeam" type="text" placeholder="Patient Access" />
+          </div>
+          <div class="field">
+            <label for="newRole">Role</label>
+            <select id="newRole">
+              <option value="trainee">Trainee</option>
+              <option value="supervisor">Supervisor</option>
+            </select>
+          </div>
+          <button id="createUserBtn" class="full-row">Create Profile</button>
+        </div>
+      </section>
+
+      <section id="appPanel" class="hidden">
+        <div class="panel status-bar">
+          <div>
+            <h2 id="welcomeText"></h2>
+            <p id="userMeta"></p>
+          </div>
+          <div class="pill-group">
+            <span id="completionPill" class="pill"></span>
+            <span id="certPill" class="pill"></span>
+          </div>
+        </div>
+
+        <nav class="tabs panel">
+          <button class="tab active" data-tab="dashboardTab">Dashboard</button>
+          <button class="tab" data-tab="trainingTab">Training Library</button>
+          <button class="tab" data-tab="assignmentsTab">Assignments</button>
+          <button class="tab" data-tab="recordsTab">My Records</button>
+          <button id="adminTabButton" class="tab hidden" data-tab="adminTab">Admin</button>
+        </nav>
+
+        <section id="dashboardTab" class="tab-panel panel active"></section>
+        <section id="trainingTab" class="tab-panel panel"></section>
+        <section id="assignmentsTab" class="tab-panel panel"></section>
+        <section id="recordsTab" class="tab-panel panel"></section>
+        <section id="adminTab" class="tab-panel panel"></section>
+      </section>
+    </main>
+
+    <template id="moduleCardTemplate">
+      <article class="card module-card">
+        <h3 class="module-title"></h3>
+        <p class="module-desc"></p>
+        <div class="chip-row"></div>
+        <div class="card-actions"></div>
+      </article>
+    </template>
+
+    <template id="assignmentRowTemplate">
+      <tr>
+        <td class="assign-title"></td>
+        <td class="assign-due"></td>
+        <td class="assign-status"></td>
+        <td class="assign-actions"></td>
+      </tr>
+    </template>
+
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div class="modal">
+        <button id="closeModalBtn" class="close-btn" aria-label="Close">x</button>
+        <div id="modalContent"></div>
+      </div>
+    </div>
+
+    <script src="./js/seeds.js"></script>
+    <script src="./js/dataStore.js"></script>
+    <script src="./js/app.js"></script>
+  </body>
+</html>
+
