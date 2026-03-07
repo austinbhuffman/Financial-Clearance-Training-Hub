@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: Financial Clearance Training API (Starter)
+  version: 0.1.0
+servers:
+  - url: https://api.example.com
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /auth/sso/start:
+    get:
+      summary: Start enterprise SSO login
+      responses:
+        "302":
+          description: Redirect to identity provider
+  /auth/sso/callback:
+    get:
+      summary: OAuth callback endpoint
+      parameters:
+        - in: query
+          name: code
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Login complete
+  /modules:
+    get:
+      summary: List modules
+      responses:
+        "200":
+          description: Module list
+    post:
+      summary: Create module (supervisor only)
+      responses:
+        "201":
+          description: Created
+  /modules/{moduleId}:
+    patch:
+      summary: Update module (supervisor only)
+      parameters:
+        - in: path
+          name: moduleId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete module (supervisor only)
+      parameters:
+        - in: path
+          name: moduleId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+  /assignments:
+    post:
+      summary: Assign a module to a user
+      responses:
+        "201":
+          description: Assignment created
+  /attempts:
+    post:
+      summary: Submit quiz attempt
+      responses:
+        "201":
+          description: Attempt recorded
+  /reports/progress:
+    get:
+      summary: Supervisor progress report
+      responses:
+        "200":
+          description: Progress rows
+components:
+  schemas:
+    Module:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+          enum: [seed, custom]
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        durationMinutes:
+          type: integer
+        passScore:
+          type: integer
+        requiredFor:
+          type: array
+          items:
+            type: string
+            enum: [trainee, supervisor]

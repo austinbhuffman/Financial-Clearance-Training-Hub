@@ -480,3 +480,29 @@ td {
 
 
 
+
+.auth-mode-hint {
+  margin-top: 16px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.authoring-grid textarea {
+  min-height: 90px;
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  margin-right: 12px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

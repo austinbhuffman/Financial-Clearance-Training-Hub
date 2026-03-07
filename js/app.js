@@ -1,4 +1,7 @@
 const store = new window.AppStore();
+const auth = new window.LocalProfileAuth(store);
+const sso = new window.SsoStubAuth();
+
 let currentUser = null;
 
 const ui = {
@@ -30,6 +33,7 @@ const ui = {
 
 function init() {
   bindEvents();
+  renderAuthModeHint();
   refreshUserSelect();
 }
 
@@ -52,6 +56,20 @@ function bindEvents() {
   });
 }
 
+function renderAuthModeHint() {
+  const existing = document.getElementById("authModeHint");
+  if (existing) {
+    existing.textContent = `${auth.describeMode()} ${sso.getSetupMessage()}`;
+    return;
+  }
+
+  const hint = document.createElement("div");
+  hint.id = "authModeHint";
+  hint.className = "alert note auth-mode-hint";
+  hint.textContent = `${auth.describeMode()} ${sso.getSetupMessage()}`;
+  ui.authPanel.appendChild(hint);
+}
+
 function handleLogin() {
   const id = ui.userSelect.value;
   if (!id) {
@@ -59,9 +77,7 @@ function handleLogin() {
     return;
   }
 
-  const users = store.getUsers();
-  const user = users.find((entry) => entry.id === id);
-
+  const user = auth.signIn(id);
   if (!user) {
     alert("Selected user was not found.");
     return;
@@ -78,6 +94,7 @@ function handleLogin() {
 }
 
 function handleLogout() {
+  auth.signOut();
   currentUser = null;
   ui.appPanel.classList.add("hidden");
   ui.authPanel.classList.remove("hidden");
@@ -95,7 +112,7 @@ function handleCreateUser() {
     return;
   }
 
-  const user = store.createUser({ name, team, role });
+  const user = auth.createProfile({ name, team, role });
   refreshUserSelect(user.id);
   ui.newName.value = "";
   ui.newTeam.value = "";
@@ -104,7 +121,7 @@ function handleCreateUser() {
 }
 
 function refreshUserSelect(selectedId) {
-  const users = store.getUsers();
+  const users = auth.listProfiles();
   ui.userSelect.innerHTML = "";
 
   users.forEach((user) => {
@@ -150,6 +167,7 @@ function renderAll() {
   renderTrainingLibrary();
   renderAssignments();
   renderRecords();
+
   if (currentUser.role === "supervisor") {
     renderAdmin();
   } else {
@@ -266,14 +284,15 @@ function renderTrainingLibrary() {
       `${module.category}`,
       `${module.durationMinutes} min`,
       `Pass >= ${module.passScore}%`,
+      `Type: ${module.source || "seed"}`,
       completionSet.has(module.id) ? "Completed" : "Pending"
     ];
 
     chips.forEach((text, index) => {
       const chip = document.createElement("span");
       chip.className = "chip";
-      if (index === 3 && text === "Completed") chip.classList.add("good");
-      if (index === 3 && text === "Pending") chip.classList.add("warn");
+      if (index === 4 && text === "Completed") chip.classList.add("good");
+      if (index === 4 && text === "Pending") chip.classList.add("warn");
       chip.textContent = text;
       chipRow.appendChild(chip);
     });
@@ -316,6 +335,8 @@ function renderAssignments() {
   assignments.forEach((assignment) => {
     const row = template.content.firstElementChild.cloneNode(true);
     const module = store.getModuleById(assignment.moduleId);
+    if (!module) return;
+
     const overdue = assignment.status !== "completed" && assignment.dueDate < todayISO();
 
     row.querySelector(".assign-title").textContent = module.title;
@@ -332,7 +353,7 @@ function renderAssignments() {
     body.appendChild(row);
   });
 
-  if (!assignments.length) {
+  if (!body.children.length) {
     body.innerHTML = "<tr><td colspan=\"4\">No assignments found.</td></tr>";
   }
 }
@@ -346,6 +367,8 @@ function renderRecords() {
   const attemptRows = attempts
     .map((attempt) => {
       const module = store.getModuleById(attempt.moduleId);
+      if (!module) return "";
+
       return `
       <tr>
         <td>${escapeHtml(module.title)}</td>
@@ -359,6 +382,8 @@ function renderRecords() {
   const certRows = certs
     .map((cert) => {
       const module = store.getModuleById(cert.moduleId);
+      if (!module) return "";
+
       return `
       <tr>
         <td>${escapeHtml(module.title)}</td>
@@ -410,6 +435,7 @@ function renderAdmin() {
   const progressRows = store.getUserProgressRows();
   const moduleStats = store.getModuleStats();
   const allUsers = store.getUsers();
+  const allModules = store.getAllModules().sort((a, b) => a.title.localeCompare(b.title));
 
   const traineeUsers = allUsers.filter((user) => user.role === "trainee");
 
@@ -438,6 +464,7 @@ function renderAdmin() {
       return `
         <tr>
           <td>${escapeHtml(stat.title)}</td>
+          <td>${escapeHtml(stat.source || "seed")}</td>
           <td>${stat.attempts}</td>
           <td>${stat.passed}</td>
           <td>${stat.avgScore}%</td>
@@ -446,10 +473,19 @@ function renderAdmin() {
     })
     .join("");
 
-  const userOptions = traineeUsers
-    .map(
-      (user) => `<option value="${user.id}">${escapeHtml(user.name)} (${escapeHtml(user.team)})</option>`
-    )
+  const userOptions = traineeUsers.length
+    ? traineeUsers
+        .map(
+          (user) => `<option value="${user.id}">${escapeHtml(user.name)} (${escapeHtml(user.team)})</option>`
+        )
+        .join("")
+    : '<option value="">No trainee profiles available</option>';
+
+  const moduleEditorOptions = allModules
+    .map((module) => {
+      const sourceText = module.source === "seed" ? "seed" : "custom";
+      return `<option value="${module.id}">${escapeHtml(module.title)} (${sourceText})</option>`;
+    })
     .join("");
 
   ui.adminTab.innerHTML = `
@@ -499,6 +535,7 @@ function renderAdmin() {
           <thead>
             <tr>
               <th>Module</th>
+              <th>Type</th>
               <th>Attempts</th>
               <th>Passed</th>
               <th>Average Score</th>
@@ -508,6 +545,83 @@ function renderAdmin() {
             ${moduleStatsHtml}
           </tbody>
         </table>
+      </div>
+      <div class="card col-12">
+        <h3>Training Authoring</h3>
+        <p class="note">Create or edit modules directly from this console. Seed modules can be edited but not deleted.</p>
+
+        <div class="field">
+          <label for="moduleEditorSelect">Load Existing Module</label>
+          <select id="moduleEditorSelect">
+            <option value="__new">+ Create New Module</option>
+            ${moduleEditorOptions}
+          </select>
+        </div>
+
+        <div class="grid authoring-grid">
+          <div class="field col-6">
+            <label for="editorTitle">Title</label>
+            <input id="editorTitle" type="text" placeholder="Insurance Verification" />
+          </div>
+          <div class="field col-6">
+            <label for="editorCategory">Category</label>
+            <input id="editorCategory" type="text" placeholder="Pre-Service" />
+          </div>
+          <div class="field col-4">
+            <label for="editorDuration">Duration (minutes)</label>
+            <input id="editorDuration" type="number" min="5" max="240" value="30" />
+          </div>
+          <div class="field col-4">
+            <label for="editorPassScore">Pass Score (%)</label>
+            <input id="editorPassScore" type="number" min="50" max="100" value="80" />
+          </div>
+          <div class="field col-4">
+            <label>Required Roles</label>
+            <label class="inline-check"><input id="reqTrainee" type="checkbox" checked /> Trainee</label>
+            <label class="inline-check"><input id="reqSupervisor" type="checkbox" checked /> Supervisor</label>
+          </div>
+          <div class="field col-12">
+            <label for="editorDescription">Description</label>
+            <textarea id="editorDescription" rows="2" placeholder="Describe the process this module covers."></textarea>
+          </div>
+          <div class="field col-12">
+            <label for="editorLessons">Lessons (one line each: Heading || Content)</label>
+            <textarea id="editorLessons" rows="4" placeholder="Verification Timing || Re-verify within 24-48 hours.\nCoverage Checks || Confirm deductible and coinsurance."></textarea>
+          </div>
+          <div class="field col-12">
+            <label for="editorQuiz">Quiz (one line each: Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale)</label>
+            <textarea id="editorQuiz" rows="5" placeholder="When should eligibility be rechecked? || At scheduling only || 24-48 hours before service || At billing only || Never || 2 || Coverage can change before service."></textarea>
+          </div>
+          <div class="field col-6">
+            <label for="editorScenarioTitle">Scenario Title</label>
+            <input id="editorScenarioTitle" type="text" placeholder="Coverage Discrepancy" />
+          </div>
+          <div class="field col-6">
+            <label for="editorScenarioCorrect">Scenario Correct Option Number</label>
+            <input id="editorScenarioCorrect" type="number" min="1" max="10" value="1" />
+          </div>
+          <div class="field col-12">
+            <label for="editorScenarioPrompt">Scenario Prompt</label>
+            <textarea id="editorScenarioPrompt" rows="2" placeholder="Describe a realistic pre-service decision point."></textarea>
+          </div>
+          <div class="field col-12">
+            <label for="editorScenarioOptions">Scenario Options (one option per line)</label>
+            <textarea id="editorScenarioOptions" rows="4" placeholder="Ignore discrepancy\nEscalate and verify benefits\nCancel visit"></textarea>
+          </div>
+          <div class="field col-12">
+            <label for="editorScenarioExplanation">Scenario Explanation</label>
+            <textarea id="editorScenarioExplanation" rows="2" placeholder="Explain why the best response is required."></textarea>
+          </div>
+        </div>
+
+        <div class="split-actions">
+          <button id="newModuleBtn" class="ghost">New Blank Module</button>
+          <div class="button-row">
+            <button id="saveModuleBtn">Save Module</button>
+            <button id="deleteModuleBtn" class="danger">Delete Module</button>
+          </div>
+        </div>
+        <p id="authoringSourceHint" class="note"></p>
       </div>
       <div class="card col-12">
         <h3>System Actions</h3>
@@ -526,10 +640,31 @@ function renderAdmin() {
   const exportBtn = ui.adminTab.querySelector("#exportBtn");
   const resetBtn = ui.adminTab.querySelector("#resetBtn");
 
-  function refreshModuleOptions() {
+  const moduleEditorSelect = ui.adminTab.querySelector("#moduleEditorSelect");
+  const editorTitle = ui.adminTab.querySelector("#editorTitle");
+  const editorCategory = ui.adminTab.querySelector("#editorCategory");
+  const editorDuration = ui.adminTab.querySelector("#editorDuration");
+  const editorPassScore = ui.adminTab.querySelector("#editorPassScore");
+  const reqTrainee = ui.adminTab.querySelector("#reqTrainee");
+  const reqSupervisor = ui.adminTab.querySelector("#reqSupervisor");
+  const editorDescription = ui.adminTab.querySelector("#editorDescription");
+  const editorLessons = ui.adminTab.querySelector("#editorLessons");
+  const editorQuiz = ui.adminTab.querySelector("#editorQuiz");
+  const editorScenarioTitle = ui.adminTab.querySelector("#editorScenarioTitle");
+  const editorScenarioCorrect = ui.adminTab.querySelector("#editorScenarioCorrect");
+  const editorScenarioPrompt = ui.adminTab.querySelector("#editorScenarioPrompt");
+  const editorScenarioOptions = ui.adminTab.querySelector("#editorScenarioOptions");
+  const editorScenarioExplanation = ui.adminTab.querySelector("#editorScenarioExplanation");
+  const authoringSourceHint = ui.adminTab.querySelector("#authoringSourceHint");
+
+  const newModuleBtn = ui.adminTab.querySelector("#newModuleBtn");
+  const saveModuleBtn = ui.adminTab.querySelector("#saveModuleBtn");
+  const deleteModuleBtn = ui.adminTab.querySelector("#deleteModuleBtn");
+
+  function refreshAssignmentModuleOptions() {
     const selectedUser = allUsers.find((user) => user.id === assignUserEl.value);
     if (!selectedUser) {
-      assignModuleEl.innerHTML = "";
+      assignModuleEl.innerHTML = '<option value="">No modules</option>';
       return;
     }
 
@@ -539,8 +674,94 @@ function renderAdmin() {
       .join("");
   }
 
-  assignUserEl.addEventListener("change", refreshModuleOptions);
-  refreshModuleOptions();
+  function fillAuthoringForm(module) {
+    if (!module) {
+      editorTitle.value = "";
+      editorCategory.value = "General";
+      editorDuration.value = "30";
+      editorPassScore.value = "80";
+      reqTrainee.checked = true;
+      reqSupervisor.checked = true;
+      editorDescription.value = "";
+      editorLessons.value = "";
+      editorQuiz.value = "";
+      editorScenarioTitle.value = "Scenario Drill";
+      editorScenarioCorrect.value = "1";
+      editorScenarioPrompt.value = "";
+      editorScenarioOptions.value = "";
+      editorScenarioExplanation.value = "";
+      authoringSourceHint.textContent = "Creating a new custom module.";
+      deleteModuleBtn.disabled = true;
+      return;
+    }
+
+    editorTitle.value = module.title;
+    editorCategory.value = module.category;
+    editorDuration.value = String(module.durationMinutes);
+    editorPassScore.value = String(module.passScore);
+    reqTrainee.checked = module.requiredFor.includes("trainee");
+    reqSupervisor.checked = module.requiredFor.includes("supervisor");
+    editorDescription.value = module.description;
+    editorLessons.value = serializeLessons(module.lessons);
+    editorQuiz.value = serializeQuiz(module.quiz);
+    editorScenarioTitle.value = module.scenario.title;
+    editorScenarioCorrect.value = String(module.scenario.correctIndex + 1);
+    editorScenarioPrompt.value = module.scenario.prompt;
+    editorScenarioOptions.value = (module.scenario.options || []).join("\n");
+    editorScenarioExplanation.value = module.scenario.explanation;
+
+    const source = module.source || "seed";
+    authoringSourceHint.textContent = `Editing module type: ${source}.`;
+    deleteModuleBtn.disabled = source === "seed";
+  }
+
+  function readAuthoringPayload() {
+    const requiredFor = [];
+    if (reqTrainee.checked) requiredFor.push("trainee");
+    if (reqSupervisor.checked) requiredFor.push("supervisor");
+
+    if (!requiredFor.length) {
+      throw new Error("Select at least one required role.");
+    }
+
+    const lessons = parseLessons(editorLessons.value);
+    const quiz = parseQuiz(editorQuiz.value);
+
+    const scenarioOptions = editorScenarioOptions.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (scenarioOptions.length < 2) {
+      throw new Error("Scenario options must include at least two lines.");
+    }
+
+    const scenarioCorrect = Number(editorScenarioCorrect.value || 1) - 1;
+    if (scenarioCorrect < 0 || scenarioCorrect >= scenarioOptions.length) {
+      throw new Error("Scenario correct option number is out of range.");
+    }
+
+    return {
+      title: editorTitle.value.trim(),
+      category: editorCategory.value.trim(),
+      description: editorDescription.value.trim(),
+      durationMinutes: Number(editorDuration.value || 30),
+      passScore: Number(editorPassScore.value || 80),
+      requiredFor,
+      lessons,
+      quiz,
+      scenario: {
+        title: editorScenarioTitle.value.trim(),
+        prompt: editorScenarioPrompt.value.trim(),
+        options: scenarioOptions,
+        correctIndex: scenarioCorrect,
+        explanation: editorScenarioExplanation.value.trim()
+      }
+    };
+  }
+
+  assignUserEl.addEventListener("change", refreshAssignmentModuleOptions);
+  refreshAssignmentModuleOptions();
 
   assignBtn.addEventListener("click", () => {
     const dueDate = ui.adminTab.querySelector("#assignDue").value;
@@ -566,6 +787,7 @@ function renderAdmin() {
 
     alert("Assignment created.");
     renderAll();
+    activateTab("adminTab");
   });
 
   exportBtn.addEventListener("click", () => {
@@ -579,6 +801,70 @@ function renderAdmin() {
     URL.revokeObjectURL(url);
   });
 
+  moduleEditorSelect.addEventListener("change", () => {
+    if (moduleEditorSelect.value === "__new") {
+      fillAuthoringForm(null);
+      return;
+    }
+
+    const module = store.getModuleById(moduleEditorSelect.value);
+    fillAuthoringForm(module || null);
+  });
+
+  newModuleBtn.addEventListener("click", () => {
+    moduleEditorSelect.value = "__new";
+    fillAuthoringForm(null);
+  });
+
+  saveModuleBtn.addEventListener("click", () => {
+    let payload;
+
+    try {
+      payload = readAuthoringPayload();
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (moduleEditorSelect.value === "__new") {
+      store.createModule(payload);
+      alert("Custom module created.");
+      renderAll();
+      activateTab("adminTab");
+      return;
+    }
+
+    const result = store.updateModule(moduleEditorSelect.value, payload);
+    if (!result.ok) {
+      alert(result.message);
+      return;
+    }
+
+    alert("Module updated.");
+    renderAll();
+    activateTab("adminTab");
+  });
+
+  deleteModuleBtn.addEventListener("click", () => {
+    if (moduleEditorSelect.value === "__new") {
+      alert("Select an existing module to delete.");
+      return;
+    }
+
+    const confirmed = confirm("Delete this module and all related attempts/certifications/assignments?");
+    if (!confirmed) return;
+
+    const result = store.deleteModule(moduleEditorSelect.value);
+    if (!result.ok) {
+      alert(result.message);
+      return;
+    }
+
+    alert("Module deleted.");
+    renderAll();
+    activateTab("adminTab");
+  });
+
   resetBtn.addEventListener("click", () => {
     const confirmed = confirm("Reset all app data to seed defaults?");
     if (!confirmed) return;
@@ -589,14 +875,23 @@ function renderAdmin() {
     const users = store.getUsers();
     const fallback = users.find((user) => user.role === "supervisor") || users[0];
     currentUser = fallback;
+    auth.signIn(fallback.id);
     refreshUserSelect(currentUser.id);
     renderAll();
+    activateTab("adminTab");
     alert("Demo data has been reset.");
   });
+
+  fillAuthoringForm(null);
 }
 
 function openModuleModal(moduleId) {
   const module = store.getModuleById(moduleId);
+  if (!module) {
+    alert("Module was not found.");
+    return;
+  }
+
   const completionSet = store.getCompletionSet(currentUser.id);
   const isComplete = completionSet.has(module.id);
 
@@ -651,6 +946,7 @@ function openModuleModal(moduleId) {
       <span class="chip">${escapeHtml(module.category)}</span>
       <span class="chip">Duration ${module.durationMinutes} minutes</span>
       <span class="chip">Pass >= ${module.passScore}%</span>
+      <span class="chip">Type: ${escapeHtml(module.source || "seed")}</span>
       <span class="chip ${isComplete ? "good" : "warn"}">${isComplete ? "Completed" : "Not Completed"}</span>
     </div>
     <hr />
@@ -747,6 +1043,92 @@ function closeModal() {
   ui.modalContent.innerHTML = "";
 }
 
+function parseLessons(rawValue) {
+  const lines = rawValue
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    throw new Error("Add at least one lesson line using 'Heading || Content'.");
+  }
+
+  return lines.map((line, index) => {
+    const parts = line.split("||").map((part) => part.trim());
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      throw new Error(`Lesson line ${index + 1} must use 'Heading || Content'.`);
+    }
+
+    return {
+      heading: parts[0],
+      content: parts.slice(1).join(" || ")
+    };
+  });
+}
+
+function parseQuiz(rawValue) {
+  const lines = rawValue
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    throw new Error(
+      "Add at least one quiz line: Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale"
+    );
+  }
+
+  return lines.map((line, index) => {
+    const parts = line.split("||").map((part) => part.trim());
+    if (parts.length < 5) {
+      throw new Error(`Quiz line ${index + 1} has too few fields.`);
+    }
+
+    const prompt = parts[0];
+    const rationale = parts[parts.length - 1] || "Review the policy standard for this item.";
+    const correctOptionNumber = Number(parts[parts.length - 2]);
+    const options = parts.slice(1, parts.length - 2).filter(Boolean);
+
+    if (!prompt) {
+      throw new Error(`Quiz line ${index + 1} is missing prompt text.`);
+    }
+
+    if (options.length < 2) {
+      throw new Error(`Quiz line ${index + 1} must include at least two answer options.`);
+    }
+
+    if (!Number.isFinite(correctOptionNumber)) {
+      throw new Error(`Quiz line ${index + 1} has invalid correct option number.`);
+    }
+
+    const correctIndex = correctOptionNumber - 1;
+    if (correctIndex < 0 || correctIndex >= options.length) {
+      throw new Error(`Quiz line ${index + 1} correct option number is out of range.`);
+    }
+
+    return {
+      id: `q${index + 1}`,
+      prompt,
+      options,
+      correctIndex,
+      rationale
+    };
+  });
+}
+
+function serializeLessons(lessons) {
+  return (lessons || []).map((lesson) => `${lesson.heading} || ${lesson.content}`).join("\n");
+}
+
+function serializeQuiz(quiz) {
+  return (quiz || [])
+    .map((question) => {
+      const correctNumber = question.correctIndex + 1;
+      return `${question.prompt} || ${question.options.join(" || ")} || ${correctNumber} || ${question.rationale}`;
+    })
+    .join("\n");
+}
+
 function formatRole(role) {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
@@ -768,10 +1150,4 @@ function escapeHtml(value) {
 }
 
 init();
-
-
-
-
-
-
 

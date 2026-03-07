@@ -1,6 +1,9 @@
 const seedData = window.FC_SEED;
 const STORAGE_KEY = window.FC_STORAGE_KEY;
 
+const ROLE_VALUES = ["trainee", "supervisor"];
+const seedModuleIds = new Set((seedData.modules || []).map((module) => module.id));
+
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -13,21 +16,27 @@ function generateId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function clampNumber(value, min, max, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
 class AppStore {
   constructor() {
     const existing = localStorage.getItem(STORAGE_KEY);
     if (!existing) {
       this.data = deepClone(seedData);
-      this.persist();
-      return;
+    } else {
+      try {
+        this.data = JSON.parse(existing);
+      } catch {
+        this.data = deepClone(seedData);
+      }
     }
 
-    try {
-      this.data = JSON.parse(existing);
-    } catch {
-      this.data = deepClone(seedData);
-      this.persist();
-    }
+    this.ensureDataShape();
+    this.persist();
   }
 
   persist() {
@@ -36,11 +45,128 @@ class AppStore {
 
   reset() {
     this.data = deepClone(seedData);
+    this.ensureDataShape();
     this.persist();
+  }
+
+  ensureDataShape() {
+    if (!Array.isArray(this.data.users)) this.data.users = [];
+    if (!Array.isArray(this.data.modules)) this.data.modules = [];
+    if (!Array.isArray(this.data.assignments)) this.data.assignments = [];
+    if (!Array.isArray(this.data.attempts)) this.data.attempts = [];
+    if (!Array.isArray(this.data.certifications)) this.data.certifications = [];
+
+    this.data.modules = this.data.modules.map((module) => {
+      const source = module.source || (seedModuleIds.has(module.id) ? "seed" : "custom");
+      return this.normalizeModule(module, source);
+    });
+  }
+
+  normalizeRoles(requiredFor) {
+    const roles = Array.isArray(requiredFor)
+      ? requiredFor.filter((role) => ROLE_VALUES.includes(role))
+      : [];
+    const deduped = [...new Set(roles)];
+    return deduped.length ? deduped : ["trainee"];
+  }
+
+  normalizeLessons(lessons) {
+    const normalized = Array.isArray(lessons)
+      ? lessons
+          .map((lesson, index) => {
+            const heading = String(lesson?.heading || `Lesson ${index + 1}`).trim();
+            const content = String(lesson?.content || "").trim();
+            if (!heading || !content) return null;
+            return { heading, content };
+          })
+          .filter(Boolean)
+      : [];
+
+    if (normalized.length) return normalized;
+    return [{ heading: "Overview", content: "Add lesson content for this training module." }];
+  }
+
+  normalizeQuiz(quiz) {
+    const normalized = Array.isArray(quiz)
+      ? quiz
+          .map((question, index) => {
+            const prompt = String(question?.prompt || `Question ${index + 1}`).trim();
+            let options = Array.isArray(question?.options)
+              ? question.options.map((option) => String(option || "").trim()).filter(Boolean)
+              : [];
+
+            if (options.length < 2) {
+              options = ["Option A", "Option B"];
+            }
+
+            const correctIndex = clampNumber(question?.correctIndex, 0, options.length - 1, 0);
+            const rationale = String(question?.rationale || "Review this policy step for details.").trim();
+
+            return {
+              id: question?.id || `q${index + 1}`,
+              prompt: prompt || `Question ${index + 1}`,
+              options,
+              correctIndex,
+              rationale
+            };
+          })
+      : [];
+
+    if (normalized.length) return normalized;
+
+    return [
+      {
+        id: "q1",
+        prompt: "Add the first quiz question.",
+        options: ["Option A", "Option B"],
+        correctIndex: 0,
+        rationale: "Document why this answer is correct for trainees."
+      }
+    ];
+  }
+
+  normalizeScenario(scenario) {
+    const options = Array.isArray(scenario?.options)
+      ? scenario.options.map((option) => String(option || "").trim()).filter(Boolean)
+      : [];
+
+    const safeOptions = options.length >= 2 ? options : ["Action A", "Action B"];
+
+    return {
+      title: String(scenario?.title || "Scenario Drill").trim() || "Scenario Drill",
+      prompt:
+        String(scenario?.prompt || "Add a scenario prompt to test workflow decision-making.").trim() ||
+        "Add a scenario prompt to test workflow decision-making.",
+      options: safeOptions,
+      correctIndex: clampNumber(scenario?.correctIndex, 0, safeOptions.length - 1, 0),
+      explanation:
+        String(scenario?.explanation || "Add explanation for the best workflow decision.").trim() ||
+        "Add explanation for the best workflow decision."
+    };
+  }
+
+  normalizeModule(module, source) {
+    return {
+      id: String(module?.id || generateId("m-custom")),
+      source,
+      title: String(module?.title || "Untitled Module").trim() || "Untitled Module",
+      description: String(module?.description || "").trim() || "Add module description.",
+      durationMinutes: clampNumber(module?.durationMinutes, 5, 240, 30),
+      category: String(module?.category || "General").trim() || "General",
+      requiredFor: this.normalizeRoles(module?.requiredFor),
+      passScore: clampNumber(module?.passScore, 50, 100, 80),
+      lessons: this.normalizeLessons(module?.lessons),
+      quiz: this.normalizeQuiz(module?.quiz),
+      scenario: this.normalizeScenario(module?.scenario)
+    };
   }
 
   getUsers() {
     return [...this.data.users];
+  }
+
+  getAllModules() {
+    return [...this.data.modules];
   }
 
   getModulesForRole(role) {
@@ -105,6 +231,11 @@ class AppStore {
   }
 
   addAssignment({ userId, moduleId, dueDate, assignedBy }) {
+    const module = this.getModuleById(moduleId);
+    if (!module) {
+      return { ok: false, message: "Selected module was not found." };
+    }
+
     const exists = this.data.assignments.some(
       (assignment) => assignment.userId === userId && assignment.moduleId === moduleId
     );
@@ -127,8 +258,74 @@ class AppStore {
     return { ok: true, assignment };
   }
 
+  createModule(payload) {
+    const module = this.normalizeModule(
+      {
+        ...payload,
+        id: generateId("m-custom"),
+        source: "custom"
+      },
+      "custom"
+    );
+
+    this.data.modules.push(module);
+    this.persist();
+    return module;
+  }
+
+  updateModule(moduleId, payload) {
+    const index = this.data.modules.findIndex((module) => module.id === moduleId);
+    if (index < 0) {
+      return { ok: false, message: "Module not found." };
+    }
+
+    const existing = this.data.modules[index];
+    const source = existing.source || (seedModuleIds.has(existing.id) ? "seed" : "custom");
+
+    const module = this.normalizeModule(
+      {
+        ...existing,
+        ...payload,
+        id: existing.id,
+        source
+      },
+      source
+    );
+
+    this.data.modules[index] = module;
+    this.persist();
+    return { ok: true, module };
+  }
+
+  deleteModule(moduleId) {
+    const index = this.data.modules.findIndex((module) => module.id === moduleId);
+    if (index < 0) {
+      return { ok: false, message: "Module not found." };
+    }
+
+    const module = this.data.modules[index];
+    if (module.source === "seed") {
+      return {
+        ok: false,
+        message: "Seed modules are protected from deletion. You can edit them, but only custom modules can be deleted."
+      };
+    }
+
+    this.data.modules.splice(index, 1);
+    this.data.assignments = this.data.assignments.filter((assignment) => assignment.moduleId !== moduleId);
+    this.data.attempts = this.data.attempts.filter((attempt) => attempt.moduleId !== moduleId);
+    this.data.certifications = this.data.certifications.filter((cert) => cert.moduleId !== moduleId);
+    this.persist();
+
+    return { ok: true };
+  }
+
   submitQuizAttempt({ userId, moduleId, answers }) {
     const module = this.getModuleById(moduleId);
+    if (!module) {
+      throw new Error("Module not found.");
+    }
+
     const total = module.quiz.length;
     const correct = module.quiz.reduce(
       (count, question, index) => (answers[index] === question.correctIndex ? count + 1 : count),
@@ -177,7 +374,7 @@ class AppStore {
     return attempt;
   }
 
-  submitScenario({ userId, moduleId, selectedIndex }) {
+  submitScenario({ moduleId, selectedIndex }) {
     const module = this.getModuleById(moduleId);
     const isCorrect = module.scenario.correctIndex === selectedIndex;
     return {
@@ -201,6 +398,7 @@ class AppStore {
       return {
         moduleId: module.id,
         title: module.title,
+        source: module.source,
         attempts: attempts.length,
         passed: passed.length,
         avgScore
@@ -237,6 +435,7 @@ class AppStore {
       "Role",
       "Team",
       "Module",
+      "Module Source",
       "Latest Score",
       "Passed",
       "Completion Date",
@@ -261,6 +460,7 @@ class AppStore {
           user.role,
           user.team,
           module.title,
+          module.source || "seed",
           latest ? latest.score : "",
           latest ? (latest.passed ? "Yes" : "No") : "",
           latest ? latest.submittedAt.slice(0, 10) : "",
@@ -285,4 +485,3 @@ class AppStore {
 }
 
 window.AppStore = AppStore;
-

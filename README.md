@@ -1,44 +1,70 @@
 # Financial Clearance Training Hub
 
-A standalone training app for Financial Clearance Department workflows. It runs in-browser with no build tools or external dependencies.
+A standalone training app for Financial Clearance Department workflows. It runs in-browser without build tools.
 
-## Features
+## Current capabilities
 
 - Role-based access (`trainee` and `supervisor`)
-- Process-specific training modules:
-  - Insurance verification
-  - Prior authorization
-  - Patient estimate and counseling
-  - Denial prevention and appeals
-- Scenario drills and graded quizzes
-- Automatic certification issuance on passing scores
-- Assignment tracking with overdue detection
+- Module lessons, scenario drills, graded quizzes, and certifications
+- Assignment tracking and overdue visibility
 - Supervisor console:
-  - User progress monitoring
-  - Module performance analytics
   - Assignment creation
-  - CSV export of training records
-- Persistent app state using `localStorage`
+  - Progress analytics
+  - CSV export
+  - Training authoring (create, edit, and delete custom modules)
+- Persistent browser storage via `localStorage`
+- Auth abstraction scaffold (`LocalProfileAuth` active, `SsoStubAuth` placeholder)
 
-## Run
+## Run locally
 
-1. Open `index.html` in any modern browser.
-2. Sign in with a seeded user or create a new profile.
-3. Complete modules and quizzes to generate certifications.
+1. Open `index.html` in a modern browser.
+2. Sign in with a seeded profile or create a new one.
 
-## Seeded Accounts
-
+Seeded users:
 - `Alex Rivera` (Supervisor)
 - `Taylor Brooks` (Trainee)
 
-## Customize
+## Training authoring format
 
-- Training content and seed users: `js/seeds.js`
-- Data logic and persistence: `js/dataStore.js`
-- UI behavior: `js/app.js`
-- Styling: `styles.css`
+In Admin -> `Training Authoring`:
+
+- Lessons textarea: one per line
+  - `Heading || Content`
+- Quiz textarea: one per line
+  - `Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale`
+- Scenario options: one option per line
+- Scenario correct option: 1-based index
+
+## GitHub Pages deployment
+
+1. Push to GitHub (already done for your repo).
+2. Repo -> `Settings` -> `Pages`.
+3. Source: `Deploy from a branch`.
+4. Branch: `main`, folder: `/ (root)`.
+
+This repo includes `.nojekyll` and `404.html` for GitHub Pages compatibility.
+
+Expected URL pattern:
+- `https://<your-username>.github.io/Financial-Clearance-Training-Hub/`
+
+## SSO and backend starter
+
+See `backend/` for scaffolding:
+- `backend/openapi.yaml` API contract draft
+- `backend/src/server.js` minimal server skeleton
+- `backend/.env.example` config template
+- `backend/README.md` implementation path
+
+## Key files
+
+- `index.html`
+- `styles.css`
+- `js/seeds.js`
+- `js/dataStore.js`
+- `js/authProvider.js`
+- `js/app.js`
 
 ## Notes
 
-- Data is stored under localStorage key `fc_training_app_v1`.
-- Supervisors can reset demo data from the Admin tab.
+- App data key: `fc_training_app_v1`
+- Admin reset restores seeded defaults and clears custom data.
