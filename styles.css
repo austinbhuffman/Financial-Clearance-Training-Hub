@@ -637,6 +637,21 @@ td {
   background: #fff;
 }
 
+#builderOverview .field {
+  min-width: 0;
+}
+
+#builderOverview .col-3 {
+  grid-column: span 3;
+  min-width: 170px;
+}
+
+#builderOverview #editorCategory,
+#builderOverview #editorStatus {
+  width: 100%;
+  min-width: 0;
+}
+
 .stack-list {
   display: grid;
   gap: 12px;
@@ -843,6 +858,9 @@ td {
     grid-template-columns: 1fr;
   }
 
+  #builderOverview .col-3 {
+    grid-column: span 6;
+  }
   .lesson-player {
     grid-template-columns: 1fr;
   }
@@ -862,6 +880,8 @@ td {
     align-items: flex-start;
   }
 }
+
+
 
 
 
