@@ -1,30 +1,68 @@
-# Backend Starter (SSO + Data API)
+# Backend Auth + Invite Service
 
-This folder is a scaffold for moving the app from browser-only localStorage to a managed backend.
+This backend now supports the supervisor invite flow required by the training app:
 
-## Goals
+- Supervisor registers users
+- User receives temporary password
+- User signs in with email + temporary password
+- User is forced to set a permanent password on first login
 
-- Enterprise authentication via OAuth/OIDC (Microsoft Entra ID, Okta, etc.)
-- Server-side storage for users, modules, assignments, attempts, and certifications
-- Auditable training records and role-based authorization
+## Modes
 
-## Suggested stack
+- `AUTH_MODE=mock` (default): no cloud dependency, temp passwords are logged in server console
+- `AUTH_MODE=cognito`: uses AWS Cognito for real email delivery and password policy
 
-- Runtime: Node.js 20+
-- Framework: Express or Fastify
-- DB: PostgreSQL
-- Auth: OAuth 2.0 / OIDC with provider SDK or Passport strategy
+## Endpoints
 
-## Included files
+- `GET /health`
+- `POST /auth/login`
+- `POST /auth/challenge/new-password`
+- `GET /auth/me`
+- `POST /admin/users/invite` (supervisor only)
 
-- `openapi.yaml`: API contract draft for auth, modules, assignments, and records
-- `src/server.js`: minimal Node HTTP server skeleton with health endpoint
-- `.env.example`: configuration template
+## Run
 
-## Next implementation steps
+1. Copy `.env.example` to `.env` and adjust values.
+2. Start server:
 
-1. Implement OAuth login and callback (`/auth/sso/start`, `/auth/sso/callback`).
-2. Add JWT/session middleware and role checks (`supervisor` vs `trainee`).
-3. Build CRUD endpoints from `openapi.yaml`.
-4. Add database migrations for audit-ready schema.
-5. Switch frontend `LocalProfileAuth` to an API-backed auth provider.
+```bash
+node src/server.js
+```
+
+In mock mode, bootstrap accounts are:
+
+- `supervisor@financialclearance.local` / `TempPass123!`
+- `trainee@financialclearance.local` / `TempPass123!`
+
+Both users must set a new password at first sign-in.
+
+## Cognito notes
+
+Set `AUTH_MODE=cognito` and configure:
+
+- `COGNITO_REGION`
+- `COGNITO_USER_POOL_ID`
+- `COGNITO_APP_CLIENT_ID`
+
+If you want to persist team/role in Cognito custom attributes, set:
+
+- `COGNITO_USE_CUSTOM_ATTRS=true`
+
+and create custom attributes in your User Pool first:
+
+- `custom:team`
+- `custom:role`
+
+## Frontend wiring
+
+`index.html` now sets:
+
+```html
+<script>
+  window.FC_AUTH_MODE = "api";
+  window.FC_AUTH_API_BASE = "http://localhost:8080";
+</script>
+```
+
+Update `FC_AUTH_API_BASE` to your deployed backend URL when hosting.
+

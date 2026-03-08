@@ -1,19 +1,26 @@
 const store = new window.AppStore();
-const auth = new window.LocalProfileAuth(store);
+const auth = window.createAuthProvider(store);
 const sso = new window.SsoStubAuth();
 
 let currentUser = null;
+let pendingChallengeToken = null;
 
 const ui = {
   authPanel: document.getElementById("authPanel"),
   appPanel: document.getElementById("appPanel"),
-  userSelect: document.getElementById("userSelect"),
+  loginEmail: document.getElementById("loginEmail"),
+  loginPassword: document.getElementById("loginPassword"),
   loginBtn: document.getElementById("loginBtn"),
+  loginView: document.getElementById("loginView"),
+  passwordChallengeView: document.getElementById("passwordChallengeView"),
+  challengeEmail: document.getElementById("challengeEmail"),
+  challengeHint: document.getElementById("challengeHint"),
+  newPassword: document.getElementById("newPassword"),
+  confirmNewPassword: document.getElementById("confirmNewPassword"),
+  completePasswordBtn: document.getElementById("completePasswordBtn"),
+  backToLoginBtn: document.getElementById("backToLoginBtn"),
+  authError: document.getElementById("authError"),
   logoutBtn: document.getElementById("logoutBtn"),
-  createUserBtn: document.getElementById("createUserBtn"),
-  newName: document.getElementById("newName"),
-  newTeam: document.getElementById("newTeam"),
-  newRole: document.getElementById("newRole"),
   welcomeText: document.getElementById("welcomeText"),
   userMeta: document.getElementById("userMeta"),
   completionPill: document.getElementById("completionPill"),
@@ -31,25 +38,40 @@ const ui = {
   closeModalBtn: document.getElementById("closeModalBtn")
 };
 
-function init() {
+async function init() {
   bindEvents();
   renderAuthModeHint();
-  refreshUserSelect();
+  await attemptSessionRestore();
 }
 
 function bindEvents() {
-  ui.loginBtn.addEventListener("click", handleLogin);
-  ui.logoutBtn.addEventListener("click", handleLogout);
-  ui.createUserBtn.addEventListener("click", handleCreateUser);
+  if (ui.loginBtn) ui.loginBtn.addEventListener("click", handleLogin);
+  if (ui.completePasswordBtn) ui.completePasswordBtn.addEventListener("click", handleCompletePassword);
+  if (ui.backToLoginBtn) ui.backToLoginBtn.addEventListener("click", handleChallengeBack);
+  if (ui.logoutBtn) ui.logoutBtn.addEventListener("click", handleLogout);
+
+  if (ui.loginPassword) {
+    ui.loginPassword.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") handleLogin();
+    });
+  }
+
+  if (ui.confirmNewPassword) {
+    ui.confirmNewPassword.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") handleCompletePassword();
+    });
+  }
 
   ui.tabs.forEach((tab) => {
     tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   });
 
-  ui.closeModalBtn.addEventListener("click", closeModal);
-  ui.modalOverlay.addEventListener("click", (event) => {
-    if (event.target === ui.modalOverlay) closeModal();
-  });
+  if (ui.closeModalBtn) ui.closeModalBtn.addEventListener("click", closeModal);
+  if (ui.modalOverlay) {
+    ui.modalOverlay.addEventListener("click", (event) => {
+      if (event.target === ui.modalOverlay) closeModal();
+    });
+  }
 }
 
 function renderAuthModeHint() {
@@ -68,20 +90,95 @@ function renderAuthModeHint() {
   ui.authPanel.appendChild(hint);
 }
 
-function handleLogin() {
-  const id = ui.userSelect.value;
-  if (!id) {
-    alert("Select a user profile first.");
+function setAuthError(message) {
+  if (!ui.authError) return;
+
+  if (!message) {
+    ui.authError.classList.add("hidden");
+    ui.authError.textContent = "";
     return;
   }
 
-  const user = auth.signIn(id);
-  if (!user) {
-    alert("Selected user was not found.");
-    return;
+  ui.authError.textContent = message;
+  ui.authError.classList.remove("hidden");
+}
+
+function showLoginView() {
+  pendingChallengeToken = null;
+  if (ui.passwordChallengeView) ui.passwordChallengeView.classList.add("hidden");
+  if (ui.loginView) ui.loginView.classList.remove("hidden");
+  if (ui.newPassword) ui.newPassword.value = "";
+  if (ui.confirmNewPassword) ui.confirmNewPassword.value = "";
+}
+
+function showPasswordChallengeView(email) {
+  if (ui.loginView) ui.loginView.classList.add("hidden");
+  if (ui.passwordChallengeView) ui.passwordChallengeView.classList.remove("hidden");
+  if (ui.challengeEmail) ui.challengeEmail.value = email || "";
+  if (ui.challengeHint) {
+    ui.challengeHint.textContent = "Temporary password verified. Set your permanent password to continue.";
+  }
+}
+
+function normalizeCurrentUser(user) {
+  const email = String(user?.email || "").trim().toLowerCase();
+  const role = user?.role === "supervisor" ? "supervisor" : "trainee";
+  const name = String(user?.name || user?.fullName || user?.email || "User").trim();
+  const team = String(user?.team || "Unassigned").trim();
+
+  let localUser = store
+    .getUsers()
+    .find((entry) => String(entry.email || "").trim().toLowerCase() === email);
+
+  if (!localUser && email) {
+    localUser = store.createUser({ name, team, role });
+    localUser.email = email;
+    store.persist();
   }
 
-  currentUser = user;
+  if (localUser) {
+    localUser.email = email || localUser.email;
+    if (!localUser.team && team) localUser.team = team;
+    if (!localUser.name && name) localUser.name = name;
+    store.persist();
+
+    return {
+      ...localUser,
+      email: localUser.email || email,
+      name: localUser.name || name,
+      team: localUser.team || team,
+      role
+    };
+  }
+
+  return {
+    ...user,
+    id: String(user?.id || user?.userId || user?.email || ""),
+    email,
+    name,
+    team,
+    role
+  };
+}
+
+async function attemptSessionRestore() {
+  try {
+    const user = await auth.getCurrentUser();
+    if (!user) {
+      showLoginView();
+      return;
+    }
+
+    finalizeLogin(user);
+  } catch (error) {
+    showLoginView();
+    setAuthError(error.message || "Session restore failed. Please sign in.");
+  }
+}
+
+function finalizeLogin(user) {
+  currentUser = normalizeCurrentUser(user);
+  setAuthError("");
   ui.authPanel.classList.add("hidden");
   ui.appPanel.classList.remove("hidden");
   ui.logoutBtn.classList.remove("hidden");
@@ -91,45 +188,106 @@ function handleLogin() {
   renderAll();
 }
 
-function handleLogout() {
-  auth.signOut();
+async function handleLogin() {
+  const email = String(ui.loginEmail?.value || "").trim().toLowerCase();
+  const password = String(ui.loginPassword?.value || "");
+
+  if (!email || !password) {
+    setAuthError("Enter your work email and password.");
+    return;
+  }
+
+  setAuthError("");
+  if (ui.loginBtn) ui.loginBtn.disabled = true;
+
+  try {
+    const response = await auth.signInWithPassword(email, password);
+
+    if (response?.challenge === "NEW_PASSWORD_REQUIRED") {
+      pendingChallengeToken = response.challengeToken;
+      showPasswordChallengeView(response.email || email);
+      if (ui.loginPassword) ui.loginPassword.value = "";
+      return;
+    }
+
+    if (!response?.user) {
+      throw new Error("Login response did not include user profile.");
+    }
+
+    finalizeLogin(response.user);
+  } catch (error) {
+    setAuthError(error.message || "Sign in failed.");
+  } finally {
+    if (ui.loginBtn) ui.loginBtn.disabled = false;
+  }
+}
+
+async function handleCompletePassword() {
+  if (!pendingChallengeToken) {
+    setAuthError("Temporary password session expired. Sign in again.");
+    showLoginView();
+    return;
+  }
+
+  const newPassword = String(ui.newPassword?.value || "");
+  const confirmPassword = String(ui.confirmNewPassword?.value || "");
+
+  if (!newPassword || !confirmPassword) {
+    setAuthError("Enter and confirm your new password.");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    setAuthError("New password and confirmation do not match.");
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    setAuthError("Use at least 8 characters for your new password.");
+    return;
+  }
+
+  setAuthError("");
+  if (ui.completePasswordBtn) ui.completePasswordBtn.disabled = true;
+
+  try {
+    const response = await auth.completeNewPassword(pendingChallengeToken, newPassword);
+    pendingChallengeToken = null;
+
+    if (!response?.user) {
+      throw new Error("Password challenge completed but user profile was missing.");
+    }
+
+    finalizeLogin(response.user);
+  } catch (error) {
+    setAuthError(error.message || "Could not set new password.");
+  } finally {
+    if (ui.completePasswordBtn) ui.completePasswordBtn.disabled = false;
+  }
+}
+
+function handleChallengeBack() {
+  pendingChallengeToken = null;
+  setAuthError("");
+  showLoginView();
+}
+
+async function handleLogout() {
+  try {
+    await auth.signOut();
+  } catch {
+    // Continue local logout even if backend signout fails.
+  }
+
   currentUser = null;
   ui.appPanel.classList.add("hidden");
   ui.authPanel.classList.remove("hidden");
   ui.logoutBtn.classList.add("hidden");
+  if (ui.loginEmail) ui.loginEmail.value = "";
+  if (ui.loginPassword) ui.loginPassword.value = "";
+  setAuthError("");
+  showLoginView();
   closeModal();
-}
-
-function handleCreateUser() {
-  const name = ui.newName.value.trim();
-  const team = ui.newTeam.value.trim();
-  const role = ui.newRole.value;
-
-  if (!name || !team) {
-    alert("Name and team are required.");
-    return;
-  }
-
-  const user = auth.createProfile({ name, team, role });
-  refreshUserSelect(user.id);
-  ui.newName.value = "";
-  ui.newTeam.value = "";
-  ui.newRole.value = "trainee";
-  alert("Profile created. Sign in to start training.");
-}
-
-function refreshUserSelect(selectedId) {
-  const users = auth.listProfiles();
-  ui.userSelect.innerHTML = "";
-
-  users.forEach((user) => {
-    const option = document.createElement("option");
-    option.value = user.id;
-    option.textContent = `${user.name} (${formatRole(user.role)} | ${user.team})`;
-    ui.userSelect.appendChild(option);
-  });
-
-  if (selectedId) ui.userSelect.value = selectedId;
 }
 
 function activateTab(tabId) {
@@ -562,6 +720,33 @@ function renderAdmin() {
           <button id="assignBtn">Assign</button>
           <button id="exportBtn" class="secondary">Export CSV</button>
         </div>
+            </div>
+      <div class="card col-4">
+        <h3>Invite User</h3>
+        <p class="note">Supervisor creates account, user receives temporary password by email.</p>
+        <div class="field">
+          <label for="inviteEmail">Work Email</label>
+          <input id="inviteEmail" type="email" placeholder="new.user@hospital.org" />
+        </div>
+        <div class="field">
+          <label for="inviteName">Full Name</label>
+          <input id="inviteName" type="text" placeholder="New Trainee" />
+        </div>
+        <div class="field">
+          <label for="inviteTeam">Team</label>
+          <input id="inviteTeam" type="text" placeholder="Patient Access" />
+        </div>
+        <div class="field">
+          <label for="inviteRole">Role</label>
+          <select id="inviteRole">
+            <option value="trainee">Trainee</option>
+            <option value="supervisor">Supervisor</option>
+          </select>
+        </div>
+        <div class="split-actions">
+          <button id="inviteBtn">Send Invite</button>
+        </div>
+        <p id="inviteResult" class="note"></p>
       </div>
       <div class="card col-12">
         <h3>Module Performance</h3>
@@ -725,6 +910,12 @@ function renderAdmin() {
   const assignModuleEl = ui.adminTab.querySelector("#assignModule");
   const assignBtn = ui.adminTab.querySelector("#assignBtn");
   const exportBtn = ui.adminTab.querySelector("#exportBtn");
+  const inviteEmailEl = ui.adminTab.querySelector("#inviteEmail");
+  const inviteNameEl = ui.adminTab.querySelector("#inviteName");
+  const inviteTeamEl = ui.adminTab.querySelector("#inviteTeam");
+  const inviteRoleEl = ui.adminTab.querySelector("#inviteRole");
+  const inviteBtn = ui.adminTab.querySelector("#inviteBtn");
+  const inviteResultEl = ui.adminTab.querySelector("#inviteResult");
   const resetBtn = ui.adminTab.querySelector("#resetBtn");
 
   const moduleEditorSelect = ui.adminTab.querySelector("#moduleEditorSelect");
@@ -1173,6 +1364,55 @@ function renderAdmin() {
     URL.revokeObjectURL(url);
   });
 
+  if (!auth.canInviteUsers()) {
+    if (inviteBtn) inviteBtn.disabled = true;
+    if (inviteResultEl) inviteResultEl.textContent = "Invite endpoint disabled for current auth mode.";
+  }
+
+  if (inviteBtn) {
+    inviteBtn.addEventListener("click", async () => {
+      const email = String(inviteEmailEl?.value || "").trim().toLowerCase();
+      const name = String(inviteNameEl?.value || "").trim();
+      const team = String(inviteTeamEl?.value || "").trim();
+      const role = inviteRoleEl?.value === "supervisor" ? "supervisor" : "trainee";
+
+      if (!email || !name || !team) {
+        if (inviteResultEl) inviteResultEl.textContent = "Email, full name, and team are required.";
+        return;
+      }
+
+      if (inviteResultEl) inviteResultEl.textContent = "Sending invite...";
+      inviteBtn.disabled = true;
+
+      try {
+        const result = await auth.inviteUser({ email, name, team, role });
+
+        let localUser = store
+          .getUsers()
+          .find((entry) => String(entry.email || "").trim().toLowerCase() === email);
+
+        if (!localUser) {
+          localUser = store.createUser({ name, team, role });
+          localUser.email = email;
+          store.persist();
+        }
+
+        if (inviteResultEl) {
+          inviteResultEl.textContent = result.message || `Invite sent to ${email}.`;
+        }
+
+        inviteEmailEl.value = "";
+        inviteNameEl.value = "";
+        inviteTeamEl.value = "";
+        inviteRoleEl.value = "trainee";
+      } catch (error) {
+        if (inviteResultEl) inviteResultEl.textContent = error.message || "Invite failed.";
+      } finally {
+        inviteBtn.disabled = false;
+      }
+    });
+  }
+
   ui.adminTab.querySelectorAll("[data-verify-completion]").forEach((button) => {
     button.addEventListener("click", () => {
       const result = store.verifyStepCompletion({
@@ -1272,13 +1512,6 @@ function renderAdmin() {
     if (!confirmed) return;
 
     store.reset();
-    refreshUserSelect(currentUser.id);
-
-    const users = store.getUsers();
-    const fallback = users.find((user) => user.role === "supervisor") || users[0];
-    currentUser = fallback;
-    auth.signIn(fallback.id);
-    refreshUserSelect(currentUser.id);
     renderAll();
     activateTab("adminTab");
     alert("Demo data has been reset.");

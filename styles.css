@@ -156,6 +156,31 @@ p {
   align-items: end;
 }
 
+.auth-form-grid {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.auth-actions button {
+  width: auto;
+}
+
+#challengeEmail {
+  background: #f3f7fd;
+}
+
+.auth-error {
+  margin-top: 14px;
+  border-left-color: var(--danger);
+  background: rgba(196, 63, 45, 0.11);
+  color: #7b2618;
+}
+
 .full-row {
   grid-column: 1 / -1;
 }
@@ -880,11 +905,4 @@ td {
     align-items: flex-start;
   }
 }
-
-
-
-
-
-
-
 

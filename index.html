@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Financial Clearance Training Hub</title>
-    <link rel="stylesheet" href="./styles.css?v=studio-3-1" />
+    <link rel="stylesheet" href="./styles.css?v=studio-4-0" />
   </head>
   <body>
     <div class="background-shape shape-one"></div>
@@ -16,7 +16,7 @@
         <p class="eyebrow">Revenue Cycle Learning Platform</p>
         <h1>Financial Clearance Training Hub</h1>
         <p>Structured lessons, evidence capture, trainer verification, and measurable readiness.</p>
-        <p class="build-tag">Build: Studio v3.1</p>
+        <p class="build-tag">Build: Studio v4.0</p>
       </div>
       <button id="logoutBtn" class="hidden secondary">Log Out</button>
     </header>
@@ -24,34 +24,46 @@
     <main class="container">
       <section id="authPanel" class="panel">
         <h2>Sign In</h2>
-        <p>Select a profile or create one to begin training.</p>
-        <div class="auth-grid">
-          <div class="field">
-            <label for="userSelect">Existing user</label>
-            <select id="userSelect"></select>
+        <p>Use your work email and password. First-time users should sign in with the temporary password from their invite email.</p>
+
+        <div id="loginView">
+          <div class="form-grid auth-form-grid">
+            <div class="field">
+              <label for="loginEmail">Work Email</label>
+              <input id="loginEmail" type="email" placeholder="name@hospital.org" autocomplete="username" />
+            </div>
+            <div class="field">
+              <label for="loginPassword">Password</label>
+              <input id="loginPassword" type="password" placeholder="Enter password or temporary password" autocomplete="current-password" />
+            </div>
+            <button id="loginBtn" class="full-row">Sign In</button>
           </div>
-          <button id="loginBtn">Sign In</button>
         </div>
-        <hr />
-        <h3>Create New Profile</h3>
-        <div class="form-grid">
+
+        <div id="passwordChallengeView" class="hidden">
+          <h3>Set New Password</h3>
+          <p id="challengeHint" class="note">Temporary password verified. Set your permanent password.</p>
           <div class="field">
-            <label for="newName">Full name</label>
-            <input id="newName" type="text" placeholder="Jordan Smith" />
+            <label for="challengeEmail">Email</label>
+            <input id="challengeEmail" type="email" readonly />
           </div>
-          <div class="field">
-            <label for="newTeam">Team</label>
-            <input id="newTeam" type="text" placeholder="Patient Access" />
+          <div class="form-grid auth-form-grid">
+            <div class="field">
+              <label for="newPassword">New Password</label>
+              <input id="newPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label for="confirmNewPassword">Confirm New Password</label>
+              <input id="confirmNewPassword" type="password" placeholder="Re-enter new password" autocomplete="new-password" />
+            </div>
+            <div class="auth-actions full-row">
+              <button id="completePasswordBtn">Set Password & Continue</button>
+              <button id="backToLoginBtn" class="secondary" type="button">Back</button>
+            </div>
           </div>
-          <div class="field">
-            <label for="newRole">Role</label>
-            <select id="newRole">
-              <option value="trainee">Trainee</option>
-              <option value="supervisor">Supervisor</option>
-            </select>
-          </div>
-          <button id="createUserBtn" class="full-row">Create Profile</button>
         </div>
+
+        <div id="authError" class="alert auth-error hidden"></div>
       </section>
 
       <section id="appPanel" class="hidden">
@@ -107,6 +119,7 @@
       </div>
     </div>
 
+    <script>window.FC_AUTH_MODE = window.FC_AUTH_MODE || "api"; window.FC_AUTH_API_BASE = window.FC_AUTH_API_BASE || "http://localhost:8080";</script>
     <script src="./js/seeds.js"></script>
     <script src="./js/dataStore.js"></script>
     <script src="./js/authProvider.js"></script>

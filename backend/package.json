@@ -1,0 +1,14 @@
+{
+  "name": "fc-training-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Financial Clearance Training backend auth and invite service",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "optionalDependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.800.0"
+  }
+}
+
