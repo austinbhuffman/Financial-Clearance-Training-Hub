@@ -298,6 +298,10 @@ button.small {
   grid-column: span 4;
 }
 
+.col-3 {
+  grid-column: span 3;
+}
+
 .col-6 {
   grid-column: span 6;
 }
@@ -796,7 +800,8 @@ td {
 
   .col-8,
   .col-6,
-  .col-4 {
+  .col-4,
+  .col-3 {
     grid-column: span 6;
   }
 
@@ -857,6 +862,7 @@ td {
     align-items: flex-start;
   }
 }
+
 
 
 
