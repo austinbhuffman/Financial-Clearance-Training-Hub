@@ -1,5 +1,6 @@
 const LOCAL_AUTH_SESSION_KEY = "fc_local_auth_session_v1";
 const API_AUTH_SESSION_KEY = "fc_api_auth_session_v1";
+const LOCAL_AUTH_ACCOUNTS_KEY = "fc_local_auth_accounts_v1";
 
 function randomToken() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
@@ -24,12 +25,29 @@ class LocalProfileAuth {
     this.current = null;
     this.pendingChallenges = new Map();
     this.passwordMap = this.loadPasswordMap();
+    this.ensureAliasAccounts();
+    this.persistPasswordMap();
   }
 
   loadPasswordMap() {
     const map = {};
-    const users = this.store.getUsers();
 
+    try {
+      const persisted = JSON.parse(localStorage.getItem(LOCAL_AUTH_ACCOUNTS_KEY) || "{}");
+      Object.entries(persisted).forEach(([email, value]) => {
+        if (!value || typeof value !== "object") return;
+
+        map[String(email).toLowerCase()] = {
+          userId: String(value.userId || ""),
+          password: String(value.password || "TempPass123!"),
+          mustChangePassword: Boolean(value.mustChangePassword)
+        };
+      });
+    } catch {
+      // Ignore malformed local auth store.
+    }
+
+    const users = this.store.getUsers();
     users.forEach((user) => {
       const email = deriveLocalEmail(user);
       map[email] = map[email] || {
@@ -40,6 +58,47 @@ class LocalProfileAuth {
     });
 
     return map;
+  }
+
+  persistPasswordMap() {
+    localStorage.setItem(LOCAL_AUTH_ACCOUNTS_KEY, JSON.stringify(this.passwordMap));
+  }
+
+  ensureAliasAccounts() {
+    const users = this.store.getUsers();
+
+    let supervisor = users.find((entry) => entry.role === "supervisor");
+    if (!supervisor) {
+      supervisor = this.store.createUser({
+        name: "Financial Clearance Supervisor",
+        role: "supervisor",
+        team: "Leadership"
+      });
+    }
+
+    let trainee = users.find((entry) => entry.role === "trainee");
+    if (!trainee) {
+      trainee = this.store.createUser({
+        name: "New Trainee",
+        role: "trainee",
+        team: "Patient Access"
+      });
+    }
+
+    const supervisorAlias = "supervisor@financialclearance.local";
+    const traineeAlias = "trainee@financialclearance.local";
+
+    this.passwordMap[supervisorAlias] = this.passwordMap[supervisorAlias] || {
+      userId: supervisor.id,
+      password: "TempPass123!",
+      mustChangePassword: true
+    };
+
+    this.passwordMap[traineeAlias] = this.passwordMap[traineeAlias] || {
+      userId: trainee.id,
+      password: "TempPass123!",
+      mustChangePassword: true
+    };
   }
 
   persistSession() {
@@ -91,6 +150,7 @@ class LocalProfileAuth {
     }
 
     this.current = { ...user, email: normalizedEmail };
+    this.persistPasswordMap();
     this.persistSession();
     return { user: this.current };
   }
@@ -109,6 +169,7 @@ class LocalProfileAuth {
     record.password = newPassword;
     record.mustChangePassword = false;
     this.pendingChallenges.delete(challengeToken);
+    this.persistPasswordMap();
 
     const user = this.store.getUsers().find((entry) => entry.id === record.userId);
     if (!user) throw new Error("User profile no longer exists.");
@@ -139,7 +200,8 @@ class LocalProfileAuth {
     localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
   }
 
-  async inviteUser(payload, actor) {
+  async inviteUser(payload) {
+    const actor = this.current;
     if (actor?.role !== "supervisor") {
       throw new Error("Only supervisors can invite users.");
     }
@@ -165,6 +227,7 @@ class LocalProfileAuth {
     };
 
     this.store.persist();
+    this.persistPasswordMap();
 
     return {
       ok: true,
@@ -319,11 +382,27 @@ class SsoStubAuth {
 
 function createAuthProvider(store) {
   const mode = String(window.FC_AUTH_MODE || "api").toLowerCase();
-  if (mode === "local") return new LocalProfileAuth(store);
+
+  if (mode === "local") {
+    return new LocalProfileAuth(store);
+  }
+
+  const baseUrl = String(window.FC_AUTH_API_BASE || "http://localhost:8080").toLowerCase();
+  const host = String(window.location.hostname || "").toLowerCase();
+  const isHosted = host && host !== "localhost" && host !== "127.0.0.1";
+  const pointsToLocalhost = baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1");
+
+  if (isHosted && pointsToLocalhost) {
+    return new LocalProfileAuth(store);
+  }
+
   return new ApiEmailAuth();
 }
 
 window.LocalProfileAuth = LocalProfileAuth;
 window.SsoStubAuth = SsoStubAuth;
 window.createAuthProvider = createAuthProvider;
+
+
+
 
