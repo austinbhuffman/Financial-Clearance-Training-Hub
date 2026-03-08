@@ -5,15 +5,19 @@ A standalone training app for Financial Clearance Department workflows. It runs 
 ## Current capabilities
 
 - Role-based access (`trainee` and `supervisor`)
-- Module lessons, scenario drills, graded quizzes, and certifications
-- Assignment tracking and overdue visibility
+- Base44-style lesson step player:
+  - Locked/unlocked step progression
+  - Evidence requirements (`none`, `note`, `upload`, `trainer_signoff`)
+  - Trainer verification queue for signoff-required steps
+- Scenario drills and graded quizzes
+- Assignment lifecycle statuses:
+  - `not_started`, `in_progress`, `steps_complete`, `completed`, `failed`
 - Supervisor console:
   - Assignment creation
-  - Progress analytics
-  - CSV export
-  - Training authoring (create, edit, and delete custom modules)
-- Persistent browser storage via `localStorage`
+  - Progress analytics and CSV export
+  - Training authoring (create/edit modules; delete custom modules)
 - Auth abstraction scaffold (`LocalProfileAuth` active, `SsoStubAuth` placeholder)
+- Persistent browser storage via `localStorage`
 
 ## Run locally
 
@@ -28,8 +32,9 @@ Seeded users:
 
 In Admin -> `Training Authoring`:
 
-- Lessons textarea: one per line
-  - `Heading || Content`
+- Steps textarea: one per line
+  - `Title || Instructions || EvidenceType`
+  - `EvidenceType` options: `none`, `note`, `upload`, `trainer_signoff`
 - Quiz textarea: one per line
   - `Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale`
 - Scenario options: one option per line
@@ -37,15 +42,11 @@ In Admin -> `Training Authoring`:
 
 ## GitHub Pages deployment
 
-1. Push to GitHub (already done for your repo).
-2. Repo -> `Settings` -> `Pages`.
-3. Source: `Deploy from a branch`.
-4. Branch: `main`, folder: `/ (root)`.
+1. Repo -> `Settings` -> `Pages`.
+2. Source: `Deploy from a branch`.
+3. Branch: `main`, folder: `/ (root)`.
 
-This repo includes `.nojekyll` and `404.html` for GitHub Pages compatibility.
-
-Expected URL pattern:
-- `https://<your-username>.github.io/Financial-Clearance-Training-Hub/`
+This repo includes `.nojekyll` and `404.html` for Pages compatibility.
 
 ## SSO and backend starter
 

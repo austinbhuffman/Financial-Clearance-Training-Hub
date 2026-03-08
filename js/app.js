@@ -43,30 +43,28 @@ function bindEvents() {
   ui.createUserBtn.addEventListener("click", handleCreateUser);
 
   ui.tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      activateTab(tab.dataset.tab);
-    });
+    tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   });
 
   ui.closeModalBtn.addEventListener("click", closeModal);
   ui.modalOverlay.addEventListener("click", (event) => {
-    if (event.target === ui.modalOverlay) {
-      closeModal();
-    }
+    if (event.target === ui.modalOverlay) closeModal();
   });
 }
 
 function renderAuthModeHint() {
   const existing = document.getElementById("authModeHint");
+  const text = `${auth.describeMode()} ${sso.getSetupMessage()}`;
+
   if (existing) {
-    existing.textContent = `${auth.describeMode()} ${sso.getSetupMessage()}`;
+    existing.textContent = text;
     return;
   }
 
   const hint = document.createElement("div");
   hint.id = "authModeHint";
   hint.className = "alert note auth-mode-hint";
-  hint.textContent = `${auth.describeMode()} ${sso.getSetupMessage()}`;
+  hint.textContent = text;
   ui.authPanel.appendChild(hint);
 }
 
@@ -87,8 +85,8 @@ function handleLogin() {
   ui.authPanel.classList.add("hidden");
   ui.appPanel.classList.remove("hidden");
   ui.logoutBtn.classList.remove("hidden");
-
   ui.adminTabButton.classList.toggle("hidden", currentUser.role !== "supervisor");
+
   activateTab("dashboardTab");
   renderAll();
 }
@@ -131,9 +129,7 @@ function refreshUserSelect(selectedId) {
     ui.userSelect.appendChild(option);
   });
 
-  if (selectedId) {
-    ui.userSelect.value = selectedId;
-  }
+  if (selectedId) ui.userSelect.value = selectedId;
 }
 
 function activateTab(tabId) {
@@ -198,7 +194,8 @@ function renderDashboard() {
   const moduleProgressCards = requiredModules
     .map((module) => {
       const latest = store.getLatestPassedAttempt(currentUser.id, module.id);
-      const status = completionSet.has(module.id) ? "Completed" : "Pending";
+      const assignment = store.getAssignmentByUserModule(currentUser.id, module.id);
+      const status = assignment ? assignment.status : "not_started";
       const scoreText = latest ? `Passed at ${latest.score}%` : "No passing attempt";
 
       return `
@@ -218,6 +215,7 @@ function renderDashboard() {
     .slice(0, 4)
     .map((assignment) => {
       const module = store.getModuleById(assignment.moduleId);
+      if (!module) return "";
       const isOverdue = assignment.dueDate < todayISO();
       return `<li>${escapeHtml(module.title)} - due ${assignment.dueDate}${isOverdue ? " (Overdue)" : ""}</li>`;
     })
@@ -267,7 +265,7 @@ function renderTrainingLibrary() {
 
   ui.trainingTab.innerHTML = `
     <h2>Training Library</h2>
-    <p>Open each module, complete the scenario, and pass the quiz to receive certification.</p>
+    <p>Complete lesson steps, scenario drill, and quiz for each module.</p>
     <div class="grid training-grid" id="trainingGrid"></div>
   `;
 
@@ -279,20 +277,24 @@ function renderTrainingLibrary() {
     card.querySelector(".module-title").textContent = module.title;
     card.querySelector(".module-desc").textContent = module.description;
 
+    const assignment = store.getAssignmentByUserModule(currentUser.id, module.id);
+    const status = assignment ? assignment.status : "not_started";
+
     const chipRow = card.querySelector(".chip-row");
     const chips = [
-      `${module.category}`,
+      module.category,
       `${module.durationMinutes} min`,
       `Pass >= ${module.passScore}%`,
       `Type: ${module.source || "seed"}`,
+      `Status: ${status}`,
       completionSet.has(module.id) ? "Completed" : "Pending"
     ];
 
     chips.forEach((text, index) => {
       const chip = document.createElement("span");
       chip.className = "chip";
-      if (index === 4 && text === "Completed") chip.classList.add("good");
-      if (index === 4 && text === "Pending") chip.classList.add("warn");
+      if (index === 5 && text === "Completed") chip.classList.add("good");
+      if (index === 5 && text === "Pending") chip.classList.add("warn");
       chip.textContent = text;
       chipRow.appendChild(chip);
     });
@@ -341,7 +343,7 @@ function renderAssignments() {
 
     row.querySelector(".assign-title").textContent = module.title;
     row.querySelector(".assign-due").textContent = assignment.dueDate;
-    row.querySelector(".assign-status").textContent = overdue ? "Overdue" : assignment.status;
+    row.querySelector(".assign-status").textContent = overdue ? "overdue" : assignment.status;
 
     const actionsCell = row.querySelector(".assign-actions");
     const openBtn = document.createElement("button");
@@ -362,6 +364,7 @@ function renderRecords() {
   const attempts = store
     .getAttemptsForUser(currentUser.id)
     .sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1));
+
   const certs = store.getCertificationsForUser(currentUser.id);
 
   const attemptRows = attempts
@@ -436,6 +439,7 @@ function renderAdmin() {
   const moduleStats = store.getModuleStats();
   const allUsers = store.getUsers();
   const allModules = store.getAllModules().sort((a, b) => a.title.localeCompare(b.title));
+  const pendingVerifications = store.getPendingTrainerVerifications();
 
   const traineeUsers = allUsers.filter((user) => user.role === "trainee");
 
@@ -468,6 +472,22 @@ function renderAdmin() {
           <td>${stat.attempts}</td>
           <td>${stat.passed}</td>
           <td>${stat.avgScore}%</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const verificationRows = pendingVerifications
+    .map((item) => {
+      return `
+        <tr>
+          <td>${escapeHtml(item.traineeName)}</td>
+          <td>${escapeHtml(item.moduleTitle)}</td>
+          <td>${escapeHtml(item.stepTitle)}</td>
+          <td>${item.evidenceNote ? escapeHtml(item.evidenceNote) : "--"}</td>
+          <td>${item.evidenceUpload ? escapeHtml(item.evidenceUpload) : "--"}</td>
+          <td>${item.submittedAt ? item.submittedAt.slice(0, 10) : "--"}</td>
+          <td><button class="small" data-verify-completion="${item.completionId}">Verify</button></td>
         </tr>
       `;
     })
@@ -527,7 +547,6 @@ function renderAdmin() {
           <button id="assignBtn">Assign</button>
           <button id="exportBtn" class="secondary">Export CSV</button>
         </div>
-        <p class="note">CSV includes latest score and certification status by user/module.</p>
       </div>
       <div class="card col-12">
         <h3>Module Performance</h3>
@@ -547,8 +566,27 @@ function renderAdmin() {
         </table>
       </div>
       <div class="card col-12">
+        <h3>Trainer Verification Queue</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Trainee</th>
+              <th>Module</th>
+              <th>Step</th>
+              <th>Evidence Note</th>
+              <th>Upload</th>
+              <th>Submitted</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${verificationRows || "<tr><td colspan=\"7\">No pending trainer signoff items.</td></tr>"}
+          </tbody>
+        </table>
+      </div>
+      <div class="card col-12">
         <h3>Training Authoring</h3>
-        <p class="note">Create or edit modules directly from this console. Seed modules can be edited but not deleted.</p>
+        <p class="note">Create or edit modules. Seed modules can be edited but not deleted.</p>
 
         <div class="field">
           <label for="moduleEditorSelect">Load Existing Module</label>
@@ -585,8 +623,8 @@ function renderAdmin() {
             <textarea id="editorDescription" rows="2" placeholder="Describe the process this module covers."></textarea>
           </div>
           <div class="field col-12">
-            <label for="editorLessons">Lessons (one line each: Heading || Content)</label>
-            <textarea id="editorLessons" rows="4" placeholder="Verification Timing || Re-verify within 24-48 hours.\nCoverage Checks || Confirm deductible and coinsurance."></textarea>
+            <label for="editorLessons">Steps (one line each: Title || Instructions || Evidence [none|note|upload|trainer_signoff])</label>
+            <textarea id="editorLessons" rows="5" placeholder="Verification Timing || Re-verify within 24-48 hours. || none\nAttach Eligibility Proof || Upload screenshot from payer portal. || upload\nLead Approval || Request trainer signoff with summary note. || trainer_signoff"></textarea>
           </div>
           <div class="field col-12">
             <label for="editorQuiz">Quiz (one line each: Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale)</label>
@@ -625,9 +663,7 @@ function renderAdmin() {
       </div>
       <div class="card col-12">
         <h3>System Actions</h3>
-        <div class="alert">
-          Use reset only to restart demo data for training sessions.
-        </div>
+        <div class="alert">Use reset only to restart demo data for training sessions.</div>
         <p></p>
         <button id="resetBtn" class="danger">Reset Demo Data</button>
       </div>
@@ -702,7 +738,7 @@ function renderAdmin() {
     reqTrainee.checked = module.requiredFor.includes("trainee");
     reqSupervisor.checked = module.requiredFor.includes("supervisor");
     editorDescription.value = module.description;
-    editorLessons.value = serializeLessons(module.lessons);
+    editorLessons.value = serializeLessons(module.steps || module.lessons || []);
     editorQuiz.value = serializeQuiz(module.quiz);
     editorScenarioTitle.value = module.scenario.title;
     editorScenarioCorrect.value = String(module.scenario.correctIndex + 1);
@@ -749,6 +785,13 @@ function renderAdmin() {
       passScore: Number(editorPassScore.value || 80),
       requiredFor,
       lessons,
+      steps: lessons.map((lesson, index) => ({
+        id: `s${index + 1}`,
+        stepNumber: index + 1,
+        stepTitle: lesson.heading,
+        stepInstructions: lesson.content,
+        evidenceRequired: lesson.evidenceRequired || "none"
+      })),
       quiz,
       scenario: {
         title: editorScenarioTitle.value.trim(),
@@ -773,13 +816,7 @@ function renderAdmin() {
       return;
     }
 
-    const result = store.addAssignment({
-      userId,
-      moduleId,
-      dueDate,
-      assignedBy: currentUser.id
-    });
-
+    const result = store.addAssignment({ userId, moduleId, dueDate, assignedBy: currentUser.id });
     if (!result.ok) {
       alert(result.message);
       return;
@@ -799,6 +836,24 @@ function renderAdmin() {
     anchor.download = `financial-clearance-training-${todayISO()}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
+  });
+
+  ui.adminTab.querySelectorAll("[data-verify-completion]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const result = store.verifyStepCompletion({
+        completionId: button.dataset.verifyCompletion,
+        trainerId: currentUser.id
+      });
+
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+
+      alert("Step verified.");
+      renderAll();
+      activateTab("adminTab");
+    });
   });
 
   moduleEditorSelect.addEventListener("change", () => {
@@ -885,26 +940,78 @@ function renderAdmin() {
   fillAuthoringForm(null);
 }
 
-function openModuleModal(moduleId) {
+function openModuleModal(moduleId, preferredStepIndex) {
   const module = store.getModuleById(moduleId);
   if (!module) {
     alert("Module was not found.");
     return;
   }
 
+  const player = store.getLessonPlayerState(currentUser.id, moduleId);
+  const assignment = player.assignment;
+  const steps = player.steps;
+  const completions = player.completions;
+
+  const activeStepIndex = Number.isFinite(preferredStepIndex)
+    ? Math.max(0, Math.min(steps.length - 1, preferredStepIndex))
+    : player.firstIncompleteIndex;
+
+  const activeStep = steps[activeStepIndex] || null;
+  const activeCompletion = activeStep
+    ? completions.find((completion) => completion.stepId === activeStep.id)
+    : null;
+
   const completionSet = store.getCompletionSet(currentUser.id);
   const isComplete = completionSet.has(module.id);
 
-  const lessonHtml = module.lessons
-    .map(
-      (lesson) => `
-      <article class="card lesson-card">
-        <h4>${escapeHtml(lesson.heading)}</h4>
-        <p>${escapeHtml(lesson.content)}</p>
-      </article>
-    `
-    )
+  function isStepUnlocked(index) {
+    if (index === 0) return true;
+
+    const prevStep = steps[index - 1];
+    const prevCompletion = completions.find((item) => item.stepId === prevStep.id);
+    return store.isStepCompleted(prevStep, prevCompletion);
+  }
+
+  function isStepDone(step) {
+    const completion = completions.find((item) => item.stepId === step.id);
+    return store.isStepCompleted(step, completion);
+  }
+
+  const stepsHtml = steps
+    .map((step, index) => {
+      const done = isStepDone(step);
+      const unlocked = isStepUnlocked(index);
+      const completion = completions.find((item) => item.stepId === step.id);
+      const pendingVerification =
+        completion &&
+        completion.completed &&
+        step.evidenceRequired === "trainer_signoff" &&
+        !completion.trainerVerified;
+
+      const statusLabel = done
+        ? "Done"
+        : pendingVerification
+          ? "Awaiting Verification"
+          : unlocked
+            ? "Ready"
+            : "Locked";
+
+      return `
+        <button class="step-nav ${index === activeStepIndex ? "active" : ""}" data-step-nav="${index}" ${
+          unlocked ? "" : "disabled"
+        }>
+          <div class="step-nav-title">${escapeHtml(step.stepTitle)}</div>
+          <div class="step-nav-meta">Step ${step.stepNumber} | ${statusLabel}</div>
+        </button>
+      `;
+    })
     .join("");
+
+  const evidenceBlock = activeStep
+    ? renderEvidenceBlock(activeStep, activeCompletion)
+    : "";
+
+  const quizLocked = !player.allStepsDone;
 
   const quizHtml = module.quiz
     .map((question, index) => {
@@ -912,7 +1019,7 @@ function openModuleModal(moduleId) {
         .map(
           (option, optionIndex) => `
           <label class="quiz-option">
-            <input type="radio" name="q-${index}" value="${optionIndex}" />
+            <input type="radio" name="q-${index}" value="${optionIndex}" ${quizLocked ? "disabled" : ""} />
             ${escapeHtml(option)}
           </label>
         `
@@ -932,7 +1039,7 @@ function openModuleModal(moduleId) {
     .map(
       (option, optionIndex) => `
       <label class="quiz-option">
-        <input type="radio" name="scenario" value="${optionIndex}" />
+        <input type="radio" name="scenario" value="${optionIndex}" ${quizLocked ? "disabled" : ""} />
         ${escapeHtml(option)}
       </label>
     `
@@ -947,31 +1054,137 @@ function openModuleModal(moduleId) {
       <span class="chip">Duration ${module.durationMinutes} minutes</span>
       <span class="chip">Pass >= ${module.passScore}%</span>
       <span class="chip">Type: ${escapeHtml(module.source || "seed")}</span>
+      <span class="chip">Assignment: ${escapeHtml(assignment.status)}</span>
       <span class="chip ${isComplete ? "good" : "warn"}">${isComplete ? "Completed" : "Not Completed"}</span>
     </div>
-    <hr />
-    <h3>Learning Content</h3>
-    <div class="grid lesson-grid">
-      ${lessonHtml}
+
+    <div class="lesson-player">
+      <aside class="lesson-sidebar">
+        <h3>Lesson Steps</h3>
+        <p class="note">${player.completedCount}/${steps.length} steps complete</p>
+        <div class="progress-track"><div class="progress-fill" style="width:${player.progressPercent}%"></div></div>
+        <div class="step-list">${stepsHtml || "<p>No steps configured.</p>"}</div>
+      </aside>
+      <section class="lesson-main">
+        ${
+          activeStep
+            ? `
+          <article class="card">
+            <h3>${escapeHtml(activeStep.stepTitle)}</h3>
+            <p class="note">Step ${activeStep.stepNumber} | Evidence: ${activeStep.evidenceRequired}</p>
+            <div class="step-instructions">${escapeHtml(activeStep.stepInstructions)}</div>
+            ${evidenceBlock}
+            <div class="split-actions">
+              <button class="small ghost" data-prev-step ${activeStepIndex === 0 ? "disabled" : ""}>Previous</button>
+              <div class="button-row">
+                ${
+                  currentUser.role === "supervisor" &&
+                  activeCompletion &&
+                  activeStep.evidenceRequired === "trainer_signoff" &&
+                  !activeCompletion.trainerVerified
+                    ? `<button class="small secondary" data-verify-active>Verify Step</button>`
+                    : ""
+                }
+                ${
+                  !isStepDone(activeStep)
+                    ? `<button class="small" data-complete-step>${
+                        activeStep.evidenceRequired === "trainer_signoff" ? "Submit For Verification" : "Mark Complete"
+                      }</button>`
+                    : ""
+                }
+                <button class="small ghost" data-next-step ${activeStepIndex >= steps.length - 1 ? "disabled" : ""}>Next</button>
+              </div>
+            </div>
+          </article>
+        `
+            : "<p>No steps configured for this module.</p>"
+        }
+      </section>
     </div>
+
     <hr />
     <h3>Scenario Drill: ${escapeHtml(module.scenario.title)}</h3>
+    ${quizLocked ? '<p class="note">Complete all lesson steps before scenario and quiz.</p>' : ""}
     <p>${escapeHtml(module.scenario.prompt)}</p>
     <form id="scenarioForm">
       ${scenarioOptions}
-      <button type="submit" class="small">Submit Scenario</button>
+      <button type="submit" class="small" ${quizLocked ? "disabled" : ""}>Submit Scenario</button>
     </form>
     <div id="scenarioResult" class="note"></div>
+
     <hr />
     <h3>Knowledge Check</h3>
     <form id="quizForm">
       ${quizHtml}
-      <button type="submit">Submit Quiz</button>
+      <button type="submit" ${quizLocked ? "disabled" : ""}>Submit Quiz</button>
     </form>
     <div id="quizResult" class="note"></div>
   `;
 
   ui.modalOverlay.classList.remove("hidden");
+
+  ui.modalContent.querySelectorAll("[data-step-nav]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openModuleModal(moduleId, Number(button.dataset.stepNav));
+    });
+  });
+
+  const prevBtn = ui.modalContent.querySelector("[data-prev-step]");
+  const nextBtn = ui.modalContent.querySelector("[data-next-step]");
+  const completeBtn = ui.modalContent.querySelector("[data-complete-step]");
+  const verifyBtn = ui.modalContent.querySelector("[data-verify-active]");
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => openModuleModal(moduleId, activeStepIndex - 1));
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => openModuleModal(moduleId, activeStepIndex + 1));
+  }
+
+  if (completeBtn && activeStep) {
+    completeBtn.addEventListener("click", () => {
+      const noteEl = document.getElementById("stepEvidenceNote");
+      const fileEl = document.getElementById("stepEvidenceFile");
+
+      const evidenceNote = noteEl ? noteEl.value.trim() : "";
+      const evidenceUpload = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0].name : null;
+
+      const result = store.submitStepCompletion({
+        assignmentId: assignment.id,
+        stepId: activeStep.id,
+        evidenceNote,
+        evidenceUpload,
+        userId: currentUser.id
+      });
+
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+
+      const nextIndex = Math.min(activeStepIndex + 1, steps.length - 1);
+      renderAll();
+      openModuleModal(moduleId, nextIndex);
+    });
+  }
+
+  if (verifyBtn && activeCompletion) {
+    verifyBtn.addEventListener("click", () => {
+      const result = store.verifyStepCompletion({
+        completionId: activeCompletion.id,
+        trainerId: currentUser.id
+      });
+
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+
+      renderAll();
+      openModuleModal(moduleId, activeStepIndex);
+    });
+  }
 
   const scenarioForm = document.getElementById("scenarioForm");
   const quizForm = document.getElementById("quizForm");
@@ -980,6 +1193,12 @@ function openModuleModal(moduleId) {
 
   scenarioForm.addEventListener("submit", (event) => {
     event.preventDefault();
+
+    if (quizLocked) {
+      alert("Complete all lesson steps first.");
+      return;
+    }
+
     const selected = scenarioForm.querySelector("input[name='scenario']:checked");
     if (!selected) {
       alert("Select a scenario response first.");
@@ -999,6 +1218,11 @@ function openModuleModal(moduleId) {
 
   quizForm.addEventListener("submit", (event) => {
     event.preventDefault();
+
+    if (quizLocked) {
+      alert("Complete all lesson steps first.");
+      return;
+    }
 
     const answers = module.quiz.map((_, index) => {
       const selected = quizForm.querySelector(`input[name='q-${index}']:checked`);
@@ -1038,6 +1262,54 @@ function openModuleModal(moduleId) {
   });
 }
 
+function renderEvidenceBlock(step, completion) {
+  const noteValue = completion?.evidenceNote || "";
+  const uploadLabel = completion?.evidenceUpload
+    ? `<p class="note">Current upload: ${escapeHtml(completion.evidenceUpload)}</p>`
+    : "";
+
+  const verificationBadge = completion?.trainerVerified
+    ? '<span class="chip good">Trainer Verified</span>'
+    : completion?.completed && step.evidenceRequired === "trainer_signoff"
+      ? '<span class="chip warn">Awaiting Trainer Verification</span>'
+      : "";
+
+  if (step.evidenceRequired === "none") {
+    return "";
+  }
+
+  if (step.evidenceRequired === "note") {
+    return `
+      <div class="evidence-box">
+        <label for="stepEvidenceNote">Evidence Note</label>
+        <textarea id="stepEvidenceNote" rows="3" placeholder="Add notes for this step.">${escapeHtml(noteValue)}</textarea>
+        ${verificationBadge}
+      </div>
+    `;
+  }
+
+  if (step.evidenceRequired === "upload") {
+    return `
+      <div class="evidence-box">
+        <label for="stepEvidenceFile">Evidence Upload</label>
+        <input id="stepEvidenceFile" type="file" />
+        ${uploadLabel}
+        ${verificationBadge}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="evidence-box">
+      <label for="stepEvidenceNote">Trainer Signoff Note</label>
+      <textarea id="stepEvidenceNote" rows="3" placeholder="Add summary for trainer verification.">${escapeHtml(
+        noteValue
+      )}</textarea>
+      ${verificationBadge}
+    </div>
+  `;
+}
+
 function closeModal() {
   ui.modalOverlay.classList.add("hidden");
   ui.modalContent.innerHTML = "";
@@ -1050,20 +1322,28 @@ function parseLessons(rawValue) {
     .filter(Boolean);
 
   if (!lines.length) {
-    throw new Error("Add at least one lesson line using 'Heading || Content'.");
+    throw new Error("Add at least one step line using 'Title || Instructions || EvidenceType'.");
   }
 
   return lines.map((line, index) => {
     const parts = line.split("||").map((part) => part.trim());
     if (parts.length < 2 || !parts[0] || !parts[1]) {
-      throw new Error(`Lesson line ${index + 1} must use 'Heading || Content'.`);
+      throw new Error(`Step line ${index + 1} must use 'Title || Instructions || EvidenceType'.`);
     }
 
+    const evidence = normalizeEvidence(parts[2] || "none");
     return {
       heading: parts[0],
-      content: parts.slice(1).join(" || ")
+      content: parts[1],
+      evidenceRequired: evidence
     };
   });
+}
+
+function normalizeEvidence(value) {
+  const normalized = String(value || "none").trim();
+  const allowed = ["none", "note", "upload", "trainer_signoff"];
+  return allowed.includes(normalized) ? normalized : "none";
 }
 
 function parseQuiz(rawValue) {
@@ -1074,7 +1354,7 @@ function parseQuiz(rawValue) {
 
   if (!lines.length) {
     throw new Error(
-      "Add at least one quiz line: Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale"
+      "Add at least one quiz line: Prompt || Option1 || Option2 || Correct Option Number || Rationale"
     );
   }
 
@@ -1085,7 +1365,7 @@ function parseQuiz(rawValue) {
     }
 
     const prompt = parts[0];
-    const rationale = parts[parts.length - 1] || "Review the policy standard for this item.";
+    const rationale = parts[parts.length - 1] || "Review this policy standard for this item.";
     const correctOptionNumber = Number(parts[parts.length - 2]);
     const options = parts.slice(1, parts.length - 2).filter(Boolean);
 
@@ -1111,13 +1391,21 @@ function parseQuiz(rawValue) {
       prompt,
       options,
       correctIndex,
-      rationale
+      rationale,
+      order: index + 1
     };
   });
 }
 
-function serializeLessons(lessons) {
-  return (lessons || []).map((lesson) => `${lesson.heading} || ${lesson.content}`).join("\n");
+function serializeLessons(stepsOrLessons) {
+  return (stepsOrLessons || [])
+    .map((item) => {
+      const heading = item.stepTitle || item.heading || "";
+      const content = item.stepInstructions || item.content || "";
+      const evidence = item.evidenceRequired || "none";
+      return `${heading} || ${content} || ${evidence}`;
+    })
+    .join("\n");
 }
 
 function serializeQuiz(quiz) {
@@ -1150,4 +1438,3 @@ function escapeHtml(value) {
 }
 
 init();
-

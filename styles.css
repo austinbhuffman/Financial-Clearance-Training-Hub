@@ -506,3 +506,83 @@ textarea {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.lesson-player {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.lesson-sidebar,
+.lesson-main {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.step-nav {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.step-nav.active {
+  border-color: var(--secondary);
+  background: rgba(35, 87, 137, 0.1);
+}
+
+.step-nav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.step-nav-title {
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.step-nav-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.step-instructions {
+  white-space: pre-line;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #f9fbfb;
+  margin: 10px 0;
+}
+
+.evidence-box {
+  border: 1px solid #e6d7a8;
+  background: #fff9e7;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.evidence-box label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 900px) {
+  .lesson-player {
+    grid-template-columns: 1fr;
+  }
+}
