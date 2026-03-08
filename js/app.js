@@ -440,6 +440,15 @@ function renderAdmin() {
   const allUsers = store.getUsers();
   const allModules = store.getAllModules().sort((a, b) => a.title.localeCompare(b.title));
   const pendingVerifications = store.getPendingTrainerVerifications();
+  const lessonCategories = [
+    "Billing",
+    "Collections",
+    "Insurance Verification",
+    "Payment Processing",
+    "Compliance",
+    "Medicaid",
+    "General"
+  ];
 
   const traineeUsers = allUsers.filter((user) => user.role === "trainee");
 
@@ -469,6 +478,7 @@ function renderAdmin() {
         <tr>
           <td>${escapeHtml(stat.title)}</td>
           <td>${escapeHtml(stat.source || "seed")}</td>
+          <td>${escapeHtml(stat.status || "published")}</td>
           <td>${stat.attempts}</td>
           <td>${stat.passed}</td>
           <td>${stat.avgScore}%</td>
@@ -500,19 +510,24 @@ function renderAdmin() {
         )
         .join("")
     : '<option value="">No trainee profiles available</option>';
-
   const moduleEditorOptions = allModules
     .map((module) => {
       const sourceText = module.source === "seed" ? "seed" : "custom";
-      return `<option value="${module.id}">${escapeHtml(module.title)} (${sourceText})</option>`;
+      const statusText = module.status || "published";
+      const versionText = module.version || "1.0";
+      return `<option value="${module.id}">${escapeHtml(module.title)} (${sourceText} | ${statusText} | v${escapeHtml(versionText)})</option>`;
     })
     .join("");
 
+  const categoryOptions = lessonCategories
+    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+    .join("");
+
   ui.adminTab.innerHTML = `
-    <h2>Supervisor Console</h2>
+    <h2>Supervisor Studio</h2>
     <div class="grid">
       <div class="card col-8">
-        <h3>User Progress</h3>
+        <h3>Trainee Progress</h3>
         <table>
           <thead>
             <tr>
@@ -530,7 +545,7 @@ function renderAdmin() {
         </table>
       </div>
       <div class="card col-4">
-        <h3>Assign Training</h3>
+        <h3>Assign Lesson</h3>
         <div class="field">
           <label for="assignUser">Trainee</label>
           <select id="assignUser">${userOptions}</select>
@@ -555,6 +570,7 @@ function renderAdmin() {
             <tr>
               <th>Module</th>
               <th>Type</th>
+              <th>Status</th>
               <th>Attempts</th>
               <th>Passed</th>
               <th>Average Score</th>
@@ -584,81 +600,116 @@ function renderAdmin() {
           </tbody>
         </table>
       </div>
-      <div class="card col-12">
-        <h3>Training Authoring</h3>
-        <p class="note">Create or edit modules. Seed modules can be edited but not deleted.</p>
-
-        <div class="field">
-          <label for="moduleEditorSelect">Load Existing Module</label>
-          <select id="moduleEditorSelect">
-            <option value="__new">+ Create New Module</option>
-            ${moduleEditorOptions}
-          </select>
-        </div>
-
-        <div class="grid authoring-grid">
-          <div class="field col-6">
-            <label for="editorTitle">Title</label>
-            <input id="editorTitle" type="text" placeholder="Insurance Verification" />
+      <div class="card col-12 builder-shell">
+        <div class="builder-header">
+          <div>
+            <h3>Lesson Builder</h3>
+            <p class="note">Build lessons in three phases: overview, steps, and scenarios.</p>
           </div>
-          <div class="field col-6">
-            <label for="editorCategory">Category</label>
-            <input id="editorCategory" type="text" placeholder="Pre-Service" />
-          </div>
-          <div class="field col-4">
-            <label for="editorDuration">Duration (minutes)</label>
-            <input id="editorDuration" type="number" min="5" max="240" value="30" />
-          </div>
-          <div class="field col-4">
-            <label for="editorPassScore">Pass Score (%)</label>
-            <input id="editorPassScore" type="number" min="50" max="100" value="80" />
-          </div>
-          <div class="field col-4">
-            <label>Required Roles</label>
-            <label class="inline-check"><input id="reqTrainee" type="checkbox" checked /> Trainee</label>
-            <label class="inline-check"><input id="reqSupervisor" type="checkbox" checked /> Supervisor</label>
-          </div>
-          <div class="field col-12">
-            <label for="editorDescription">Description</label>
-            <textarea id="editorDescription" rows="2" placeholder="Describe the process this module covers."></textarea>
-          </div>
-          <div class="field col-12">
-            <label for="editorLessons">Steps (one line each: Title || Instructions || Evidence [none|note|upload|trainer_signoff])</label>
-            <textarea id="editorLessons" rows="5" placeholder="Verification Timing || Re-verify within 24-48 hours. || none\nAttach Eligibility Proof || Upload screenshot from payer portal. || upload\nLead Approval || Request trainer signoff with summary note. || trainer_signoff"></textarea>
-          </div>
-          <div class="field col-12">
-            <label for="editorQuiz">Quiz (one line each: Prompt || Option1 || Option2 || Option3 || Option4 || Correct Option Number || Rationale)</label>
-            <textarea id="editorQuiz" rows="5" placeholder="When should eligibility be rechecked? || At scheduling only || 24-48 hours before service || At billing only || Never || 2 || Coverage can change before service."></textarea>
-          </div>
-          <div class="field col-6">
-            <label for="editorScenarioTitle">Scenario Title</label>
-            <input id="editorScenarioTitle" type="text" placeholder="Coverage Discrepancy" />
-          </div>
-          <div class="field col-6">
-            <label for="editorScenarioCorrect">Scenario Correct Option Number</label>
-            <input id="editorScenarioCorrect" type="number" min="1" max="10" value="1" />
-          </div>
-          <div class="field col-12">
-            <label for="editorScenarioPrompt">Scenario Prompt</label>
-            <textarea id="editorScenarioPrompt" rows="2" placeholder="Describe a realistic pre-service decision point."></textarea>
-          </div>
-          <div class="field col-12">
-            <label for="editorScenarioOptions">Scenario Options (one option per line)</label>
-            <textarea id="editorScenarioOptions" rows="4" placeholder="Ignore discrepancy\nEscalate and verify benefits\nCancel visit"></textarea>
-          </div>
-          <div class="field col-12">
-            <label for="editorScenarioExplanation">Scenario Explanation</label>
-            <textarea id="editorScenarioExplanation" rows="2" placeholder="Explain why the best response is required."></textarea>
+          <div class="builder-actions">
+            <div class="field builder-field-sm">
+              <label for="moduleEditorSelect">Load Module</label>
+              <select id="moduleEditorSelect">
+                <option value="__new">+ Create New Module</option>
+                ${moduleEditorOptions}
+              </select>
+            </div>
+            <button id="newModuleBtn" class="ghost small">New</button>
+            <button id="saveModuleBtn" class="small">Save</button>
+            <button id="deleteModuleBtn" class="danger small">Delete</button>
           </div>
         </div>
 
-        <div class="split-actions">
-          <button id="newModuleBtn" class="ghost">New Blank Module</button>
-          <div class="button-row">
-            <button id="saveModuleBtn">Save Module</button>
-            <button id="deleteModuleBtn" class="danger">Delete Module</button>
-          </div>
+        <div class="builder-tabs" role="tablist" aria-label="Lesson Builder Tabs">
+          <button type="button" class="builder-tab active" data-builder-tab="builderOverview">Overview</button>
+          <button type="button" class="builder-tab" data-builder-tab="builderSteps">Lesson Steps</button>
+          <button type="button" class="builder-tab" data-builder-tab="builderScenario">Scenarios & Quiz</button>
         </div>
+
+        <section id="builderOverview" class="builder-panel active">
+          <div class="grid">
+            <div class="field col-6">
+              <label for="editorTitle">Lesson Title</label>
+              <input id="editorTitle" type="text" placeholder="Medicaid Baby Process" />
+            </div>
+            <div class="field col-3">
+              <label for="editorCategory">Category</label>
+              <select id="editorCategory">${categoryOptions}</select>
+            </div>
+            <div class="field col-3">
+              <label for="editorStatus">Publication Status</label>
+              <select id="editorStatus">
+                <option value="published">Published</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+            <div class="field col-12">
+              <label for="editorDescription">Description</label>
+              <textarea id="editorDescription" rows="3" placeholder="Overview of what trainees will learn."></textarea>
+            </div>
+            <div class="field col-3">
+              <label for="editorDuration">Estimated Minutes</label>
+              <input id="editorDuration" type="number" min="5" max="240" value="30" />
+            </div>
+            <div class="field col-3">
+              <label for="editorPassScore">Pass Score (%)</label>
+              <input id="editorPassScore" type="number" min="50" max="100" value="80" />
+            </div>
+            <div class="field col-3">
+              <label for="editorVersion">Version</label>
+              <input id="editorVersion" type="text" value="1.0" />
+            </div>
+            <div class="field col-3">
+              <label>Required Roles</label>
+              <label class="inline-check"><input id="reqTrainee" type="checkbox" checked /> Trainee</label>
+              <label class="inline-check"><input id="reqSupervisor" type="checkbox" checked /> Supervisor</label>
+            </div>
+            <div class="field col-12">
+              <label class="inline-check"><input id="editorRequired" type="checkbox" checked /> Mark lesson as required</label>
+            </div>
+          </div>
+        </section>
+
+        <section id="builderSteps" class="builder-panel">
+          <div class="split-actions">
+            <h4>Step Editor</h4>
+            <button id="addStepBtn" class="small secondary">Add Step</button>
+          </div>
+          <div id="builderStepList" class="stack-list"></div>
+        </section>
+
+        <section id="builderScenario" class="builder-panel">
+          <div class="grid">
+            <div class="field col-6">
+              <label for="editorScenarioTitle">Scenario Title</label>
+              <input id="editorScenarioTitle" type="text" placeholder="Eligibility Conflict" />
+            </div>
+            <div class="field col-6">
+              <label for="editorScenarioCorrect">Scenario Correct Option Number</label>
+              <input id="editorScenarioCorrect" type="number" min="1" max="10" value="1" />
+            </div>
+            <div class="field col-12">
+              <label for="editorScenarioPrompt">Scenario Prompt</label>
+              <textarea id="editorScenarioPrompt" rows="2" placeholder="Describe the situation."></textarea>
+            </div>
+            <div class="field col-12">
+              <label for="editorScenarioOptions">Scenario Options (one per line)</label>
+              <textarea id="editorScenarioOptions" rows="4" placeholder="Ignore discrepancy\nEscalate and verify benefits"></textarea>
+            </div>
+            <div class="field col-12">
+              <label for="editorScenarioExplanation">Scenario Explanation</label>
+              <textarea id="editorScenarioExplanation" rows="2" placeholder="Why this action is correct."></textarea>
+            </div>
+          </div>
+
+          <hr />
+          <div class="split-actions">
+            <h4>Quiz Questions</h4>
+            <button id="addQuizBtn" class="small secondary">Add Question</button>
+          </div>
+          <div id="builderQuizList" class="stack-list"></div>
+        </section>
+
         <p id="authoringSourceHint" class="note"></p>
       </div>
       <div class="card col-12">
@@ -681,11 +732,12 @@ function renderAdmin() {
   const editorCategory = ui.adminTab.querySelector("#editorCategory");
   const editorDuration = ui.adminTab.querySelector("#editorDuration");
   const editorPassScore = ui.adminTab.querySelector("#editorPassScore");
+  const editorStatus = ui.adminTab.querySelector("#editorStatus");
+  const editorVersion = ui.adminTab.querySelector("#editorVersion");
+  const editorRequired = ui.adminTab.querySelector("#editorRequired");
   const reqTrainee = ui.adminTab.querySelector("#reqTrainee");
   const reqSupervisor = ui.adminTab.querySelector("#reqSupervisor");
   const editorDescription = ui.adminTab.querySelector("#editorDescription");
-  const editorLessons = ui.adminTab.querySelector("#editorLessons");
-  const editorQuiz = ui.adminTab.querySelector("#editorQuiz");
   const editorScenarioTitle = ui.adminTab.querySelector("#editorScenarioTitle");
   const editorScenarioCorrect = ui.adminTab.querySelector("#editorScenarioCorrect");
   const editorScenarioPrompt = ui.adminTab.querySelector("#editorScenarioPrompt");
@@ -693,9 +745,38 @@ function renderAdmin() {
   const editorScenarioExplanation = ui.adminTab.querySelector("#editorScenarioExplanation");
   const authoringSourceHint = ui.adminTab.querySelector("#authoringSourceHint");
 
+  const builderStepList = ui.adminTab.querySelector("#builderStepList");
+  const builderQuizList = ui.adminTab.querySelector("#builderQuizList");
+
   const newModuleBtn = ui.adminTab.querySelector("#newModuleBtn");
   const saveModuleBtn = ui.adminTab.querySelector("#saveModuleBtn");
   const deleteModuleBtn = ui.adminTab.querySelector("#deleteModuleBtn");
+  const addStepBtn = ui.adminTab.querySelector("#addStepBtn");
+  const addQuizBtn = ui.adminTab.querySelector("#addQuizBtn");
+
+  let builderSteps = [];
+  let builderQuiz = [];
+
+  function makeStep(index) {
+    return {
+      id: `s${index + 1}`,
+      stepNumber: index + 1,
+      stepTitle: "",
+      stepInstructions: "",
+      evidenceRequired: "none"
+    };
+  }
+
+  function makeQuestion(index) {
+    return {
+      id: `q${index + 1}`,
+      prompt: "",
+      options: ["", "", "", ""],
+      correctIndex: 0,
+      rationale: "",
+      order: index + 1
+    };
+  }
 
   function refreshAssignmentModuleOptions() {
     const selectedUser = allUsers.find((user) => user.id === assignUserEl.value);
@@ -710,45 +791,246 @@ function renderAdmin() {
       .join("");
   }
 
+  function renderBuilderTabs() {
+    ui.adminTab.querySelectorAll(".builder-tab").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.builderTab;
+        ui.adminTab.querySelectorAll(".builder-tab").forEach((tab) => {
+          tab.classList.toggle("active", tab === button);
+        });
+
+        ui.adminTab.querySelectorAll(".builder-panel").forEach((panel) => {
+          panel.classList.toggle("active", panel.id === target);
+        });
+      });
+    });
+  }
+
+  function normalizeStepOrder() {
+    builderSteps = builderSteps.map((step, index) => ({
+      ...step,
+      stepNumber: index + 1,
+      id: step.id || `s${index + 1}`
+    }));
+  }
+
+  function normalizeQuizOrder() {
+    builderQuiz = builderQuiz.map((question, index) => ({
+      ...question,
+      order: index + 1,
+      id: question.id || `q${index + 1}`
+    }));
+  }
+
+  function renderStepList() {
+    if (!builderSteps.length) {
+      builderStepList.innerHTML = '<div class="empty-state">No steps yet. Click Add Step.</div>';
+      return;
+    }
+
+    builderStepList.innerHTML = builderSteps
+      .map((step, index) => {
+        return `
+          <article class="builder-card">
+            <div class="builder-card-head">
+              <span class="step-badge">${index + 1}</span>
+              <strong>${escapeHtml(step.stepTitle || `Step ${index + 1}`)}</strong>
+              <button type="button" class="small danger" data-remove-step="${index}">Remove</button>
+            </div>
+            <div class="field">
+              <label>Step Title</label>
+              <input data-step-input="stepTitle" data-step-index="${index}" value="${escapeHtml(step.stepTitle)}" />
+            </div>
+            <div class="field">
+              <label>Instructions</label>
+              <textarea data-step-input="stepInstructions" data-step-index="${index}" rows="3">${escapeHtml(step.stepInstructions)}</textarea>
+            </div>
+            <div class="field">
+              <label>Evidence Required</label>
+              <select data-step-input="evidenceRequired" data-step-index="${index}">
+                <option value="none" ${step.evidenceRequired === "none" ? "selected" : ""}>None</option>
+                <option value="note" ${step.evidenceRequired === "note" ? "selected" : ""}>Text Note</option>
+                <option value="upload" ${step.evidenceRequired === "upload" ? "selected" : ""}>File Upload</option>
+                <option value="trainer_signoff" ${step.evidenceRequired === "trainer_signoff" ? "selected" : ""}>Trainer Sign-off</option>
+              </select>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+
+    builderStepList.querySelectorAll("[data-step-input]").forEach((input) => {
+      const eventName = input.tagName === "SELECT" ? "change" : "input";
+      input.addEventListener(eventName, () => {
+        const index = Number(input.dataset.stepIndex);
+        const field = input.dataset.stepInput;
+        builderSteps[index][field] = input.value;
+        if (field === "stepTitle") {
+          renderStepList();
+        }
+      });
+    });
+
+    builderStepList.querySelectorAll("[data-remove-step]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.removeStep);
+        builderSteps.splice(index, 1);
+        normalizeStepOrder();
+        renderStepList();
+      });
+    });
+  }
+
+  function renderQuizList() {
+    if (!builderQuiz.length) {
+      builderQuizList.innerHTML = '<div class="empty-state">No quiz questions yet. Click Add Question.</div>';
+      return;
+    }
+
+    builderQuizList.innerHTML = builderQuiz
+      .map((question, index) => {
+        return `
+          <article class="builder-card">
+            <div class="builder-card-head">
+              <span class="step-badge">Q${index + 1}</span>
+              <strong>${escapeHtml(question.prompt || `Question ${index + 1}`)}</strong>
+              <button type="button" class="small danger" data-remove-quiz="${index}">Remove</button>
+            </div>
+            <div class="field">
+              <label>Question</label>
+              <textarea data-quiz-input="prompt" data-quiz-index="${index}" rows="2">${escapeHtml(question.prompt)}</textarea>
+            </div>
+            <div class="builder-choices">
+              ${question.options
+                .map((option, optionIndex) => {
+                  return `
+                    <div class="field">
+                      <label>Option ${String.fromCharCode(65 + optionIndex)}</label>
+                      <input data-quiz-option="${optionIndex}" data-quiz-index="${index}" value="${escapeHtml(option)}" />
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>
+            <div class="field">
+              <label>Correct Option</label>
+              <select data-quiz-input="correctIndex" data-quiz-index="${index}">
+                <option value="0" ${question.correctIndex === 0 ? "selected" : ""}>A</option>
+                <option value="1" ${question.correctIndex === 1 ? "selected" : ""}>B</option>
+                <option value="2" ${question.correctIndex === 2 ? "selected" : ""}>C</option>
+                <option value="3" ${question.correctIndex === 3 ? "selected" : ""}>D</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Rationale</label>
+              <input data-quiz-input="rationale" data-quiz-index="${index}" value="${escapeHtml(question.rationale || "")}" />
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+
+    builderQuizList.querySelectorAll("[data-quiz-input]").forEach((input) => {
+      const eventName = input.tagName === "SELECT" ? "change" : "input";
+      input.addEventListener(eventName, () => {
+        const index = Number(input.dataset.quizIndex);
+        const field = input.dataset.quizInput;
+        builderQuiz[index][field] = field === "correctIndex" ? Number(input.value) : input.value;
+        if (field === "prompt") {
+          renderQuizList();
+        }
+      });
+    });
+
+    builderQuizList.querySelectorAll("[data-quiz-option]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const qIndex = Number(input.dataset.quizIndex);
+        const oIndex = Number(input.dataset.quizOption);
+        builderQuiz[qIndex].options[oIndex] = input.value;
+      });
+    });
+
+    builderQuizList.querySelectorAll("[data-remove-quiz]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.removeQuiz);
+        builderQuiz.splice(index, 1);
+        normalizeQuizOrder();
+        renderQuizList();
+      });
+    });
+  }
+
   function fillAuthoringForm(module) {
     if (!module) {
       editorTitle.value = "";
       editorCategory.value = "General";
       editorDuration.value = "30";
       editorPassScore.value = "80";
+      editorStatus.value = "published";
+      editorVersion.value = "1.0";
+      editorRequired.checked = true;
       reqTrainee.checked = true;
       reqSupervisor.checked = true;
       editorDescription.value = "";
-      editorLessons.value = "";
-      editorQuiz.value = "";
       editorScenarioTitle.value = "Scenario Drill";
       editorScenarioCorrect.value = "1";
       editorScenarioPrompt.value = "";
       editorScenarioOptions.value = "";
       editorScenarioExplanation.value = "";
+      builderSteps = [makeStep(0)];
+      builderQuiz = [makeQuestion(0)];
       authoringSourceHint.textContent = "Creating a new custom module.";
       deleteModuleBtn.disabled = true;
+      renderStepList();
+      renderQuizList();
       return;
     }
 
-    editorTitle.value = module.title;
-    editorCategory.value = module.category;
-    editorDuration.value = String(module.durationMinutes);
-    editorPassScore.value = String(module.passScore);
+    editorTitle.value = module.title || "";
+    editorCategory.value = lessonCategories.includes(module.category) ? module.category : "General";
+    editorDuration.value = String(module.durationMinutes || 30);
+    editorPassScore.value = String(module.passScore || 80);
+    editorStatus.value = module.status || "published";
+    editorVersion.value = module.version || "1.0";
+    editorRequired.checked = module.required !== false;
     reqTrainee.checked = module.requiredFor.includes("trainee");
     reqSupervisor.checked = module.requiredFor.includes("supervisor");
-    editorDescription.value = module.description;
-    editorLessons.value = serializeLessons(module.steps || module.lessons || []);
-    editorQuiz.value = serializeQuiz(module.quiz);
-    editorScenarioTitle.value = module.scenario.title;
-    editorScenarioCorrect.value = String(module.scenario.correctIndex + 1);
-    editorScenarioPrompt.value = module.scenario.prompt;
+    editorDescription.value = module.description || "";
+    editorScenarioTitle.value = module.scenario.title || "";
+    editorScenarioCorrect.value = String((module.scenario.correctIndex || 0) + 1);
+    editorScenarioPrompt.value = module.scenario.prompt || "";
     editorScenarioOptions.value = (module.scenario.options || []).join("\n");
-    editorScenarioExplanation.value = module.scenario.explanation;
+    editorScenarioExplanation.value = module.scenario.explanation || "";
+
+    builderSteps = (module.steps || []).map((step, index) => ({
+      id: step.id || `s${index + 1}`,
+      stepNumber: index + 1,
+      stepTitle: step.stepTitle || step.heading || "",
+      stepInstructions: step.stepInstructions || step.content || "",
+      evidenceRequired: step.evidenceRequired || "none"
+    }));
+
+    if (!builderSteps.length) builderSteps = [makeStep(0)];
+
+    builderQuiz = (module.quiz || []).map((question, index) => ({
+      id: question.id || `q${index + 1}`,
+      prompt: question.prompt || "",
+      options: [...(question.options || ["", "", "", ""])],
+      correctIndex: Number(question.correctIndex || 0),
+      rationale: question.rationale || "",
+      order: index + 1
+    }));
+
+    if (!builderQuiz.length) builderQuiz = [makeQuestion(0)];
 
     const source = module.source || "seed";
     authoringSourceHint.textContent = `Editing module type: ${source}.`;
     deleteModuleBtn.disabled = source === "seed";
+
+    normalizeStepOrder();
+    normalizeQuizOrder();
+    renderStepList();
+    renderQuizList();
   }
 
   function readAuthoringPayload() {
@@ -760,8 +1042,60 @@ function renderAdmin() {
       throw new Error("Select at least one required role.");
     }
 
-    const lessons = parseLessons(editorLessons.value);
-    const quiz = parseQuiz(editorQuiz.value);
+    const cleanedSteps = builderSteps
+      .map((step, index) => ({
+        id: step.id || `s${index + 1}`,
+        stepNumber: index + 1,
+        stepTitle: String(step.stepTitle || "").trim(),
+        stepInstructions: String(step.stepInstructions || "").trim(),
+        evidenceRequired: normalizeEvidence(String(step.evidenceRequired || "none").trim())
+      }))
+      .filter((step) => step.stepTitle || step.stepInstructions);
+
+    if (!cleanedSteps.length) {
+      throw new Error("Add at least one lesson step.");
+    }
+
+    const invalidStep = cleanedSteps.find((step) => !step.stepTitle || !step.stepInstructions);
+    if (invalidStep) {
+      throw new Error("Each step must include a title and instructions.");
+    }
+
+    const cleanedQuiz = builderQuiz
+      .map((question, index) => {
+        const prompt = String(question.prompt || "").trim();
+        const options = (question.options || []).map((option) => String(option || "").trim());
+        const filledOptions = options.filter(Boolean);
+
+        if (!prompt && !filledOptions.length) return null;
+
+        if (!prompt) {
+          throw new Error(`Quiz question ${index + 1} is missing prompt text.`);
+        }
+
+        if (filledOptions.length < 2) {
+          throw new Error(`Quiz question ${index + 1} needs at least two options.`);
+        }
+
+        const correctIndex = Number(question.correctIndex || 0);
+        if (correctIndex < 0 || correctIndex >= options.length || !options[correctIndex]) {
+          throw new Error(`Quiz question ${index + 1} has invalid correct option.`);
+        }
+
+        return {
+          id: question.id || `q${index + 1}`,
+          prompt,
+          options,
+          correctIndex,
+          rationale: String(question.rationale || "").trim() || "Review this policy standard.",
+          order: index + 1
+        };
+      })
+      .filter(Boolean);
+
+    if (!cleanedQuiz.length) {
+      throw new Error("Add at least one quiz question.");
+    }
 
     const scenarioOptions = editorScenarioOptions.value
       .split("\n")
@@ -779,22 +1113,23 @@ function renderAdmin() {
 
     return {
       title: editorTitle.value.trim(),
-      category: editorCategory.value.trim(),
+      category: lessonCategories.includes(editorCategory.value) ? editorCategory.value : "General",
       description: editorDescription.value.trim(),
       durationMinutes: Number(editorDuration.value || 30),
       passScore: Number(editorPassScore.value || 80),
+      status: editorStatus.value,
+      version: editorVersion.value.trim() || "1.0",
+      required: editorRequired.checked,
       requiredFor,
-      lessons,
-      steps: lessons.map((lesson, index) => ({
-        id: `s${index + 1}`,
-        stepNumber: index + 1,
-        stepTitle: lesson.heading,
-        stepInstructions: lesson.content,
-        evidenceRequired: lesson.evidenceRequired || "none"
+      steps: cleanedSteps,
+      lessons: cleanedSteps.map((step) => ({
+        heading: step.stepTitle,
+        content: step.stepInstructions,
+        evidenceRequired: step.evidenceRequired
       })),
-      quiz,
+      quiz: cleanedQuiz,
       scenario: {
-        title: editorScenarioTitle.value.trim(),
+        title: editorScenarioTitle.value.trim() || "Scenario Drill",
         prompt: editorScenarioPrompt.value.trim(),
         options: scenarioOptions,
         correctIndex: scenarioCorrect,
@@ -854,6 +1189,18 @@ function renderAdmin() {
       renderAll();
       activateTab("adminTab");
     });
+  });
+
+  addStepBtn.addEventListener("click", () => {
+    builderSteps.push(makeStep(builderSteps.length));
+    normalizeStepOrder();
+    renderStepList();
+  });
+
+  addQuizBtn.addEventListener("click", () => {
+    builderQuiz.push(makeQuestion(builderQuiz.length));
+    normalizeQuizOrder();
+    renderQuizList();
   });
 
   moduleEditorSelect.addEventListener("change", () => {
@@ -937,6 +1284,7 @@ function renderAdmin() {
     alert("Demo data has been reset.");
   });
 
+  renderBuilderTabs();
   fillAuthoringForm(null);
 }
 
@@ -1438,3 +1786,4 @@ function escapeHtml(value) {
 }
 
 init();
+
