@@ -193,6 +193,13 @@ textarea {
   resize: vertical;
 }
 
+.field > input:not([type="checkbox"]):not([type="radio"]),
+.field > select,
+.field > textarea {
+  width: 100%;
+  min-width: 0;
+}
+
 button {
   border: none;
   border-radius: 10px;
@@ -527,6 +534,11 @@ td {
   background: linear-gradient(140deg, rgba(31, 79, 131, 0.09), rgba(13, 156, 123, 0.07));
 }
 
+.builder-header > :first-child {
+  flex: 0 1 380px;
+  min-width: 230px;
+}
+
 .builder-header h3 {
   margin-bottom: 4px;
 }
@@ -534,12 +546,20 @@ td {
 .builder-actions {
   display: flex;
   align-items: flex-end;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 1 1 520px;
+}
+
+.builder-actions > button {
+  white-space: nowrap;
 }
 
 .builder-field-sm {
-  min-width: 300px;
+  flex: 1 1 360px;
+  min-width: 240px;
+  max-width: 520px;
 }
 
 .builder-field-sm label {
@@ -809,7 +829,9 @@ td {
   }
 
   .builder-field-sm {
+    flex: 1 1 100%;
     min-width: 100%;
+    max-width: none;
   }
 
   .builder-choices {
@@ -835,4 +857,8 @@ td {
     align-items: flex-start;
   }
 }
+
+
+
+
 
